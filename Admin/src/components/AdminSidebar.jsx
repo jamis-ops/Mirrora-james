@@ -17,7 +17,7 @@ const navigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Products", href: "/admin/products", icon: Package },
   { name: "Orders", href: "/admin/orders", icon: ShoppingCart },
-  { name: "Messages", href: "/admin/messages", icon: MessageCircle }, // <-- Add this new navigation item
+  { name: "Messages", href: "/admin/messages", icon: MessageCircle }, 
   { name: "Banners", href: "/admin/banners", icon: Image },
   { name: "FAQ", href: "/admin/faq", icon: HelpCircle },
 ];
@@ -56,7 +56,7 @@ export default function AdminSidebar() {
           <h1 className="text-xl font-bold text-[#2C1810]">
             Mirrora Philippines
           </h1>
-          <p className="text-sm text-[#6B5E4F]">Admin</p>
+    
         </div>
       </div>
 

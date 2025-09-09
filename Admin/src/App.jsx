@@ -13,6 +13,7 @@ import AdminLayout from "./components/AdminLayout.jsx";
 import LogIn from "./pages/Login.jsx";
 import "./index.css";
 import Products from "./pages/Products.jsx";
+import Messages from "./pages/Messages.jsx";
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="products/:categoryId" element={<Products />} />
             <Route path="orders" element={<Orders />} />
             <Route path="banners" element={<Banners />} />
+            <Route path="messages" element={<Messages/>} />
             <Route path="faq" element={<FAQ />} />
             <Route path="settings" element={<Settings />} />
           </Route>

@@ -1,8 +1,8 @@
 // src/pages/Products.jsx
 
 import React, { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom"; // Import useNavigate
-import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft } from "lucide-react"; // Import ArrowLeft icon
+import { useParams, useNavigate } from "react-router-dom";
+import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft } from "lucide-react";
 import ProductCard from "../components/ProductCard.jsx";
 import { db } from "../../Backend/firebaseConfig.js";
 import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
@@ -25,15 +25,25 @@ const getCategoryName = (id) => {
     return category ? category.name : "Unknown Category";
 };
 
+// Loader Component
+const Loader = ({ message }) => (
+  <div className="fixed inset-0 flex items-center justify-center bg-gray-100 bg-opacity-75 z-50">
+    <div className="flex flex-col items-center justify-center p-8">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-[#A68B69] mb-4"></div>
+      <p className="text-gray-600 font-medium">{message}</p>
+    </div>
+  </div>
+);
+
 export default function Products() {
     const { categoryId } = useParams();
-    const navigate = useNavigate(); // Initialize useNavigate
+    const navigate = useNavigate();
     const [products, setProducts] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isEdit, setIsEdit] = useState(false);
-    // Initialize with a default value to prevent 'undefined'
     const [currentProduct, setCurrentProduct] = useState({ id: null, name: "", inventory: 0, imageUrl: "", categoryId: categoryId || "" });
     const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false); // New state for save button loader
     const [imageFile, setImageFile] = useState(null);
 
     const categoryName = getCategoryName(categoryId);
@@ -54,6 +64,9 @@ export default function Products() {
             }));
             setProducts(productsList);
             setLoading(false);
+        }, (error) => {
+            console.error("Error fetching products: ", error);
+            setLoading(false);
         });
 
         return () => unsubscribe();
@@ -61,7 +74,6 @@ export default function Products() {
 
     const openAddModal = () => {
         setIsEdit(false);
-        // Explicitly set the categoryId from the URL parameter
         setCurrentProduct({ id: null, name: "", inventory: 0, imageUrl: "", categoryId: categoryId });
         setImageFile(null);
         setIsModalOpen(true);
@@ -85,14 +97,17 @@ export default function Products() {
     };
 
     const handleSave = async () => {
-        // Validation check for empty name and categoryId
+        setIsSaving(true); // Start saving state
+        
         if (currentProduct.name.trim() === "") {
             alert("Product name is required.");
+            setIsSaving(false);
             return;
         }
         if (!currentProduct.categoryId) {
             alert("Category is missing. Please refresh the page or try again.");
             console.error("Error: categoryId is undefined.");
+            setIsSaving(false);
             return;
         }
 
@@ -111,12 +126,14 @@ export default function Products() {
             } catch (error) {
                 console.error("Cloudinary upload failed: ", error.response ? error.response.data : error.message);
                 alert("Failed to upload image. Please check your Cloudinary settings.");
+                setIsSaving(false);
                 return;
             }
         }
         
         if (!imageUrl) {
             alert("Image URL is required.");
+            setIsSaving(false);
             return;
         }
 
@@ -129,7 +146,7 @@ export default function Products() {
                     imageUrl: imageUrl
                 });
             } else {
-                await addDoc(collection(db, "products"), { // Use the `products` collection directly
+                await addDoc(collection(db, "products"), {
                     name: currentProduct.name,
                     inventory: currentProduct.inventory,
                     imageUrl: imageUrl,
@@ -141,6 +158,8 @@ export default function Products() {
         } catch (error) {
             console.error("Firebase save operation failed: ", error);
             alert("Failed to save product to Firestore. Check your database rules and connection.");
+        } finally {
+            setIsSaving(false); // End saving state
         }
     };
 
@@ -158,16 +177,15 @@ export default function Products() {
     };
 
     if (loading) {
-        return <div className="p-8 text-center text-gray-500">Loading products...</div>;
+        return <Loader message="Loading products..." />;
     }
     
     return (
         <div className="flex-1 p-8">
             <header className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-4">
-                    {/* The Back Button */}
                     <button
-                        onClick={() => navigate(-1)} // This navigates back one step in history
+                        onClick={() => navigate(-1)} 
                         className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
                     >
                         <ArrowLeft size={24} className="text-gray-600" />
@@ -208,7 +226,7 @@ export default function Products() {
                 </button>
             </div>
             {isModalOpen && (
-                <div className="fixed inset-0  bg-opacity-75 flex items-center justify-center p-4 z-50">
+                <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-gray-900">
@@ -259,14 +277,16 @@ export default function Products() {
                             <button
                                 onClick={closeModal}
                                 className="py-2 px-4 rounded-lg border border-gray-300 text-sm font-semibold transition-colors hover:bg-gray-100"
+                                disabled={isSaving}
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleSave}
-                                className="bg-[#A68B69] text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors hover:bg-[#8C7355]"
+                                className="bg-[#A68B69] text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors hover:bg-[#8C7355] disabled:bg-gray-400"
+                                disabled={isSaving}
                             >
-                                {isEdit ? "Update" : "Add"}
+                                {isSaving ? "Saving..." : (isEdit ? "Update" : "Add")}
                             </button>
                         </div>
                     </div>
@@ -274,4 +294,4 @@ export default function Products() {
             )}
         </div>
     );
-}   
+}
