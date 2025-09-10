@@ -73,10 +73,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                             <Mail className="w-4 h-4" />
                             Email Customer
                         </button>
-                        <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
-                            <Phone className="w-4 h-4" />
-                            Call Customer
-                        </button>
+                    
                     </div>
 
                     {/* Order Information Card */}

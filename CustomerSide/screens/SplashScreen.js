@@ -5,7 +5,7 @@ import { View, ImageBackground, Image, StyleSheet, Dimensions } from 'react-nati
 const SplashScreen = ({ navigation }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
-      navigation.replace('Welcome');
+      navigation.replace('Onboarding'); // ✅ Go to Onboarding instead of Welcome
     }, 3000); // show splash for 3 seconds
 
     return () => clearTimeout(timer);

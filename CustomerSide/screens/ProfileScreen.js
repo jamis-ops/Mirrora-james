@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Modal, ActivityIndicator, Platform } from 'react-native';
+import { 
+    View, 
+    Text, 
+    StyleSheet, 
+    TouchableOpacity, 
+    ScrollView, 
+    Image, 
+    Modal, 
+    ActivityIndicator, 
+    Platform 
+} from 'react-native';
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
@@ -30,7 +40,6 @@ export default function ProfileScreen() {
                 const currentUser = auth.currentUser;
                 if (currentUser) {
                     setEmail(currentUser.email);
-
                     const userDocRef = doc(db, "users", currentUser.uid);
                     const docSnap = await getDoc(userDocRef);
 
@@ -51,7 +60,6 @@ export default function ProfileScreen() {
         if (isFocused) {
             fetchUserData();
         }
-
     }, [isFocused]);
 
     if (!leagueSpartanLoaded || !montserratLoaded) {
@@ -62,14 +70,28 @@ export default function ProfileScreen() {
         try {
             await signOut(auth);
             setShowLogoutModal(false);
-            navigation.navigate('SignIn'); // Navigate to the SignIn screen after successful sign-out
+            navigation.navigate('SignIn');
         } catch (error) {
             console.error('Sign out error', error);
         }
     };
+    // Inside ProfileScreen.js
 
-    const ProfileMenuItem = ({ icon, title, onPress }) => (
-        <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+// At the top of ProfileScreen
+const handleNavigation = (screenName) => {
+  // Use getParent() to access StackNavigator from TabNavigator
+  const parentNav = navigation.getParent();
+  if (parentNav) {
+    parentNav.navigate(screenName);
+  } else {
+    console.warn("Parent navigator not found!");
+  }
+};
+
+    
+
+    const MenuItem = ({ icon, title, onPress, isLast = false }) => (
+        <TouchableOpacity style={[styles.menuItem, isLast && styles.lastMenuItem]} onPress={onPress}>
             <View style={styles.menuItemLeft}>
                 <View style={styles.iconCircle}>
                     <Icon name={icon} size={24} color="#A68B69" />
@@ -79,14 +101,6 @@ export default function ProfileScreen() {
             <Icon name="chevron-right" size={24} color="#777" />
         </TouchableOpacity>
     );
-
-    if (loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#A68B69" />
-            </View>
-        );
-    }
 
     return (
         <View style={styles.container}>
@@ -99,26 +113,45 @@ export default function ProfileScreen() {
                 <View style={{ width: 28 }} />
             </View>
 
+            {/* Profile Content */}
             <ScrollView contentContainerStyle={styles.contentContainer}>
-                {/* User Info Section with relative positioning for edit icon */}
-                <View style={[styles.userInfoSection, { position: 'relative' }]}>
+                {/* User Info Section */}
+                <View style={styles.userInfoSection}>
                     <Image source={require('../assets/profile.png')} style={styles.avatar} />
-                    {/* New edit icon on top of the avatar */}
-                    <TouchableOpacity style={styles.editIconContainer} onPress={() => navigation.navigate('CompleteProfile')}>
-                        <Icon name="pencil" size={18} color="#A68B69" />
-                    </TouchableOpacity>
-                    <Text style={styles.userName}>{name}</Text>
-                    <Text style={styles.userHandle}>{email}</Text>
+                    <Text style={[styles.userName, loading && styles.skeletonName]}>
+                        {loading ? ' ' : name}
+                    </Text>
+                    {/* The user's email is now correctly displayed here */}
+                    <Text style={[styles.userHandle, loading && styles.skeletonEmail]}>
+                        {loading ? ' ' : email}
+                    </Text>
                 </View>
 
                 {/* Menu Items Section */}
                 <View style={styles.menuSection}>
-                    <ProfileMenuItem icon="account-outline" title="Edit Profile" onPress={() => navigation.navigate('CompleteProfile')} />
-                    <ProfileMenuItem icon="archive-outline" title="My Orders" onPress={() => navigation.navigate('MyOrderScreen')} />
-                    <ProfileMenuItem icon="heart-outline" title="Wishlist" onPress={() => navigation.navigate('Wishlist')} />
-                    <ProfileMenuItem icon="help-circle-outline" title="Help & Support" onPress={() => navigation.navigate('HelpAndSupportScreen')} />
-                    <ProfileMenuItem icon="cog-outline" title="Setting" onPress={() => navigation.navigate('SettingScreen')} />
-                </View>
+  <MenuItem
+    icon="account-outline"
+    title="Edit Profile"
+    onPress={() => handleNavigation('CompleteProfile')}
+  />
+  <MenuItem
+    icon="archive-outline"
+    title="My Order"
+    onPress={() => handleNavigation('MyOrderScreen')}
+  />
+  <MenuItem
+    icon="map-marker-outline"
+    title="Address"
+    onPress={() => handleNavigation('MyAddressScreen')}
+  />
+  <MenuItem
+    icon="cog-outline"
+    title="Setting"
+    onPress={() => handleNavigation('SettingScreen')}
+    isLast={true}
+  />
+</View>
+
 
                 {/* Logout Button */}
                 <TouchableOpacity style={styles.logoutButton} onPress={() => setShowLogoutModal(true)}>
@@ -162,12 +195,6 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F9F9F9',
-    },
     container: {
         flex: 1,
         backgroundColor: '#F9F9F9',
@@ -203,19 +230,6 @@ const styles = StyleSheet.create({
         borderRadius: 60,
         marginBottom: 10,
     },
-    editIconContainer: {
-        position: 'absolute',
-        right: 25,
-        bottom: 55,
-        backgroundColor: '#F3EFE9',
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1.5,
-        borderColor: '#fff',
-    },
     userName: {
         fontFamily: 'Montserrat_600SemiBold',
         fontSize: 20,
@@ -225,6 +239,19 @@ const styles = StyleSheet.create({
         fontFamily: 'Montserrat_400Regular',
         fontSize: 14,
         color: '#777',
+    },
+    skeletonName: {
+        backgroundColor: '#E0E0E0',
+        height: 24,
+        width: 150,
+        borderRadius: 4,
+    },
+    skeletonEmail: {
+        backgroundColor: '#E0E0E0',
+        height: 16,
+        width: 200,
+        borderRadius: 4,
+        marginTop: 4,
     },
     menuSection: {
         width: '100%',
@@ -246,6 +273,9 @@ const styles = StyleSheet.create({
         paddingVertical: 15,
         borderBottomWidth: 1,
         borderBottomColor: '#eee',
+    },
+    lastMenuItem: {
+        borderBottomWidth: 0,
     },
     menuItemLeft: {
         flexDirection: 'row',

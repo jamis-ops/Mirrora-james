@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 
 const BottomNavigationBar = () => {
@@ -27,6 +27,7 @@ const BottomNavigationBar = () => {
   };
 
   return (
+    <SafeAreaView>
     <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
       {navItems.map((item) => (
         <TouchableOpacity
@@ -43,23 +44,27 @@ const BottomNavigationBar = () => {
         </TouchableOpacity>
       ))}
     </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    height: 60,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  right: 0,
+  height: 60,
+  backgroundColor: "#fff",
+  borderTopWidth: 0.5,
+  borderTopColor: "#ccc",
+  flexDirection: "row",
+  justifyContent: "space-around",
+  alignItems: "center",
+  zIndex: 20,          // iOS
+  elevation: 20,       // Android
+},
+
   navItem: {
     alignItems: 'center',
     paddingVertical: 10,
