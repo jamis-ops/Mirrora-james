@@ -1,4 +1,3 @@
-// StackNavigator.js
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Toast, { BaseToast } from "react-native-toast-message";
@@ -21,12 +20,13 @@ import CheckoutScreen from "../screens/CheckoutScreen";
 import OrderConfirmationScreen from "../screens/OrderConfirmationScreen";
 import MyOrderScreen from "../screens/MyOrderScreen";
 import SettingScreen from "../screens/SettingScreen";
+import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
 const Stack = createNativeStackNavigator();
 
-// Toast config (unchanged)
+// Toast config
 const toastConfig = {
   success: (props) => (
     <BaseToast
@@ -79,6 +79,7 @@ export default function StackNavigator() {
         <Stack.Screen name="OrderConfirmationScreen" component={OrderConfirmationScreen} />
         <Stack.Screen name="MyOrderScreen" component={MyOrderScreen} />
         <Stack.Screen name="SettingScreen" component={SettingScreen} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
       </Stack.Navigator>
 
       <Toast
