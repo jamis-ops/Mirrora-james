@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, MapPin, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+
 import { db, collection, getDocs, doc, updateDoc } from "../../Backend/firebaseConfig.js";
 import { query, orderBy, limit } from "firebase/firestore";
 
-// Helper function to format currency, moved here to resolve the import error.
+// Helper function to format currency
 export const formatCurrency = (amount) => {
     if (typeof amount !== 'number') {
         amount = parseFloat(amount);
@@ -23,6 +24,7 @@ const Header = () => (
     <header className="bg-white/100 backdrop-blur-lg border-b border-gray-200/50 px-6 py-4 sticky top-0 z-40">
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
+                {/* Add your logo or title here */}
             </div>
             <div className="flex items-center gap-3">
                 <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200">
@@ -37,11 +39,86 @@ const Header = () => (
     </header>
 );
 
+// Enhanced Status Badge Component
+const EnhancedStatusBadge = ({ status, orderId, onUpdate }) => {
+    const statusConfig = {
+        pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', icon: Clock },
+        confirmed: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle },
+        processing: { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300', icon: RefreshCw },
+        shipped: { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', icon: Package },
+        delivered: { bg: 'bg-green-200', text: 'text-green-800', border: 'border-green-400', icon: CheckCircle },
+        cancelled: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', icon: XCircle },
+        refunded: { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-300', icon: RefreshCw },
+    };
+
+    const config = statusConfig[status] || statusConfig.pending;
+    const Icon = config.icon;
+
+    return (
+        <div className="relative">
+            <select
+                value={status}
+                onChange={(e) => onUpdate(orderId, e.target.value)}
+                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
+            >
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="processing">Processing</option>
+                <option value="shipped">Shipped</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="refunded">Refunded</option>
+            </select>
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <Icon className="w-4 h-4" />
+            </div>
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <ChevronDown className="w-4 h-4" />
+            </div>
+        </div>
+    );
+};
+
+// Enhanced Payment Badge Component
+const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
+    const paymentConfig = {
+        pending: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', icon: XCircle },
+        partial: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', icon: AlertCircle },
+        paid: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle },
+        refunded: { bg: 'bg-gray-200', text: 'text-gray-800', border: 'border-gray-300', icon: RefreshCw },
+    };
+
+    const config = paymentConfig[payment] || paymentConfig.pending;
+    const Icon = config.icon;
+
+    return (
+        <div className="relative">
+            <select
+                value={payment}
+                onChange={(e) => onUpdate(orderId, e.target.value)}
+                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
+            >
+                <option value="pending">Pending</option>
+                <option value="partial">Partial (50% Paid)</option>
+                <option value="paid">Fully Paid</option>
+                <option value="refunded">Refunded</option>
+            </select>
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <Icon className="w-4 h-4" />
+            </div>
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <ChevronDown className="w-4 h-4" />
+            </div>
+        </div>
+    );
+};
+
+// Order Detail Modal Component
 const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePayment }) => {
     if (!isOpen) return null;
 
-// Enhanced date formatting function
-    const formatDateTime = (dateStr, timeStr) => {
+    // Enhanced date formatting function
+    const formatDateTime = useCallback((dateStr, timeStr) => {
         try {
             let date;
             if (dateStr && dateStr.includes('/')) {
@@ -52,29 +129,48 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
             } else {
                 date = new Date(dateStr);
             }
-            
+
             if (isNaN(date.getTime())) {
                 return dateStr || 'Invalid Date';
             }
-            
+
             return date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
-            }) + (timeStr ? ` at ${date.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit', 
-                hour12: true 
-            })}` : '');
+            }) + (timeStr ? ` at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}` : '');
         } catch (error) {
             return dateStr || 'Invalid Date';
         }
-    };
+    }, []);
 
-    // Calculate payment amounts
     const totalAmount = parseFloat(order.amount?.toString().replace(/[₱,]/g, '') || order.price?.toString().replace(/[₱,]/g, '') || '0');
-    const downpaymentAmount = totalAmount * 0.5; // 50% downpayment
+    const downpaymentAmount = totalAmount * 0.5;
     const remainingAmount = totalAmount - downpaymentAmount;
+
+    // Function to handle export details click
+    const handleExportDetails = () => {
+        const orderData = {
+            orderId: order.id,
+            orderDate: order.date,
+            orderTime: order.time,
+            customerName: order.customer?.name || order.customerName || 'N/A',
+            customerEmail: order.customer?.email || order.customerEmail || order.email || 'N/A',
+            customerPhone: order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || 'N/A',
+            productName: order.product || order.productName || 'N/A',
+            quantity: order.quantity || '1',
+            totalAmount: totalAmount,
+            paidAmount: order.payment === 'paid' ? totalAmount : order.payment === 'partial' ? downpaymentAmount : 0,
+            remainingBalance: order.payment === 'paid' ? 0 : order.payment === 'partial' ? remainingAmount : totalAmount,
+            paymentMethod: order.paymentMethod || 'N/A',
+            referenceNumber: order.referenceNumber || order.refNumber || 'N/A',
+            orderStatus: order.status,
+            paymentStatus: order.payment
+        };
+
+        const params = new URLSearchParams(orderData);
+        window.open(`https://docs.google.com/spreadsheets/d/1uThQOZeyImn2QlwW10m7Y-rzklQKtxk-99aFUvC8Fko/edit?usp=sharing&${params.toString()}`, '_blank');
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -91,18 +187,16 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                 <p className="text-gray-600">Complete order information and management</p>
                             </div>
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md"
-                        >
+                        <button onClick={onClose} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md">
                             ✕
                         </button>
                     </div>
                 </div>
+
                 <div className="p-6 space-y-8">
                     {/* Quick Actions */}
                     <div className="flex flex-wrap gap-3">
-                        <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
+                        <button onClick={handleExportDetails} className="px-4 py-2 bg-[#A68B69] hover:bg-[#8C7355] text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
                             <Download className="w-4 h-4" />
                             Export Details
                         </button>
@@ -135,19 +229,11 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Order Status</label>
-                                <EnhancedStatusBadge
-                                    status={order.status}
-                                    orderId={order.id}
-                                    onUpdate={onUpdateStatus}
-                                />
+                                <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
-                                <EnhancedPaymentBadge
-                                    payment={order.payment}
-                                    orderId={order.id}
-                                    onUpdate={onUpdatePayment}
-                                />
+                                <EnhancedPaymentBadge payment={order.payment} orderId={order.id} onUpdate={onUpdatePayment} />
                             </div>
                         </div>
                     </div>
@@ -333,9 +419,9 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                         <div className="flex justify-between text-sm">
                                             <span className="text-gray-600">Amount Collected:</span>
                                             <span className="font-semibold text-green-700">
-                                                {order.payment === 'paid' ? formatCurrency(totalAmount) : 
-                                                 order.payment === 'partial' ? formatCurrency(downpaymentAmount) : 
-                                                 formatCurrency(0)}
+                                                {order.payment === 'paid' ? formatCurrency(totalAmount) :
+                                                    order.payment === 'partial' ? formatCurrency(downpaymentAmount) :
+                                                        formatCurrency(0)}
                                             </span>
                                         </div>
                                         {order.payment !== 'paid' && (
@@ -357,135 +443,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     );
 };
 
-// Enhanced Status Badge Component
-const EnhancedStatusBadge = ({ status, orderId, onUpdate }) => {
-    const statusConfig = {
-        pending: {
-            bg: 'bg-yellow-100',
-            text: 'text-yellow-800',
-            border: 'border-yellow-300',
-            icon: Clock,
-        },
-        confirmed: {
-            bg: 'bg-green-100',
-            text: 'text-green-800',
-            border: 'border-green-300',
-            icon: CheckCircle,
-        },
-        processing: {
-            bg: 'bg-amber-100',
-            text: 'text-amber-800',
-            border: 'border-amber-300',
-            icon: RefreshCw,
-        },
-        shipped: {
-            bg: 'bg-blue-100',
-            text: 'text-blue-800',
-            border: 'border-blue-300',
-            icon: Package,
-        },
-        delivered: {
-            bg: 'bg-green-200',
-            text: 'text-green-800',
-            border: 'border-green-400',
-            icon: CheckCircle,
-        },
-        cancelled: {
-            bg: 'bg-red-100',
-            text: 'text-red-800',
-            border: 'border-red-300',
-            icon: XCircle,
-        },
-        refunded: {
-            bg: 'bg-gray-200',
-            text: 'text-gray-800',
-            border: 'border-gray-300',
-            icon: RefreshCw,
-        },
-    };
-
-    const config = statusConfig[status] || statusConfig.pending;
-    const Icon = config.icon;
-
-    return (
-        <div className="relative">
-            <select
-                value={status}
-                onChange={(e) => onUpdate(orderId, e.target.value)}
-                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
-            >
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="processing">Processing</option>
-                <option value="shipped">Shipped</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="refunded">Refunded</option>
-            </select>
-            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <Icon className="w-4 h-4" />
-            </div>
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="w-4 h-4" />
-            </div>
-        </div>
-    );
-};
-
-// Enhanced Payment Badge Component
-const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
-    const paymentConfig = {
-        pending: {
-            bg: 'bg-red-100',
-            text: 'text-red-800',
-            border: 'border-red-300',
-            icon: XCircle,
-        },
-        partial: {
-            bg: 'bg-orange-100',
-            text: 'text-orange-800',
-            border: 'border-orange-300',
-            icon: AlertCircle,
-        },
-        paid: {
-            bg: 'bg-green-100',
-            text: 'text-green-800',
-            border: 'border-green-300',
-            icon: CheckCircle,
-        },
-        refunded: {
-            bg: 'bg-gray-200',
-            text: 'text-gray-800',
-            border: 'border-gray-300',
-            icon: RefreshCw,
-        },
-    };
-
-    const config = paymentConfig[payment] || paymentConfig.pending;
-    const Icon = config.icon;
-
-    return (
-        <div className="relative">
-            <select
-                value={payment}
-                onChange={(e) => onUpdate(orderId, e.target.value)}
-                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
-            >
-                <option value="pending">Pending</option>
-                <option value="partial">Partial (50% Paid)</option>
-                <option value="paid">Fully Paid</option>
-                <option value="refunded">Refunded</option>
-            </select>
-            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <Icon className="w-4 h-4" />
-            </div>
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <ChevronDown className="w-4 h-4" />
-            </div>
-        </div>
-    );
-};
-
+// Main Orders Component
 export default function Orders() {
     const [orders, setOrders] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -493,11 +451,11 @@ export default function Orders() {
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [visibleOrdersCount, setVisibleOrdersCount] = useState(10);
-    const [totalOrderCount, setTotalOrderCount] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const ordersPerPage = 5;
 
     // Enhanced date formatting function for table display
-    const formatOrderDate = (dateStr) => {
+    const formatOrderDate = useCallback((dateStr) => {
         try {
             let date;
             if (dateStr && dateStr.includes('/')) {
@@ -508,11 +466,11 @@ export default function Orders() {
             } else {
                 date = new Date(dateStr);
             }
-            
+
             if (isNaN(date.getTime())) {
                 return dateStr || 'Invalid Date';
             }
-            
+
             return date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
@@ -521,25 +479,14 @@ export default function Orders() {
         } catch (error) {
             return dateStr || 'Invalid Date';
         }
-    };
+    }, []);
 
     // Function to fetch orders from Firestore
-    const fetchOrders = async () => {
+    const fetchOrders = useCallback(async () => {
         setLoading(true);
         try {
             const ordersCollectionRef = collection(db, "orders");
-            // First, get the total count of orders
-            const allOrdersSnapshot = await getDocs(ordersCollectionRef);
-            setTotalOrderCount(allOrdersSnapshot.docs.length);
-
-            // Then, fetch the limited and sorted list
-            const q = query(
-                ordersCollectionRef, 
-                orderBy('createdAt', 'desc'),
-                limit(visibleOrdersCount)
-            );
-            const ordersSnapshot = await getDocs(q);
-
+            const ordersSnapshot = await getDocs(ordersCollectionRef);
             const ordersList = ordersSnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
@@ -550,66 +497,58 @@ export default function Orders() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    // Fetch data on component mount and when visibleOrdersCount changes
+    // Fetch data on component mount
     useEffect(() => {
         fetchOrders();
-    }, [visibleOrdersCount]);
+    }, [fetchOrders]);
 
-    // Combined handler for "See More" and "See Less"
-    const handleToggleOrders = () => {
-        if (visibleOrdersCount > 10) {
-            setVisibleOrdersCount(10);
-        } else {
-            setVisibleOrdersCount(prevCount => prevCount + 10);
-        }
-    };
-    
     // Memoized calculations to avoid re-calculating on every render
-    const filteredOrders = orders.filter((order) => {
-        // Enhanced search with multiple customer field options
-        const customerName = order.customer?.name || order.customerName || '';
-        const customerEmail = order.customer?.email || order.customerEmail || order.email || '';
-        const customerPhone = order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || '';
-        
-        const matchesSearch =
-            order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            customerPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (order.product || order.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (order.amount || order.price || '').toString().toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesStatus =
-            statusFilter === "All Status" || order.status.toLowerCase() === statusFilter.toLowerCase();
-            
-        return matchesSearch && matchesStatus;
-    });
+    const filteredOrders = useMemo(() => {
+        return orders.filter((order) => {
+            const customerName = order.customer?.name || order.customerName || '';
+            const customerEmail = order.customer?.email || order.customerEmail || order.email || '';
+            const customerPhone = order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || '';
 
-    const orderCounts = {
-        total: totalOrderCount,
+            const matchesSearch =
+                order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                customerPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (order.product || order.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (order.amount || order.price || '').toString().toLowerCase().includes(searchQuery.toLowerCase());
+
+            const matchesStatus = statusFilter === "All Status" || order.status.toLowerCase() === statusFilter.toLowerCase();
+            return matchesSearch && matchesStatus;
+        });
+    }, [orders, searchQuery, statusFilter]);
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+    const startIndex = (currentPage - 1) * ordersPerPage;
+    const currentOrders = filteredOrders.slice(startIndex, startIndex + ordersPerPage);
+
+    // Calculate order counts and revenue
+    const orderCounts = useMemo(() => ({
+        total: orders.length,
         pending: orders.filter((o) => o.status === "pending").length,
         processing: orders.filter((o) => o.status === "processing").length,
         shipped: orders.filter((o) => o.status === "shipped").length,
         delivered: orders.filter((o) => o.status === "delivered").length,
-    };
-    
-    const totalRevenue = orders
-        .filter(order => order.payment === 'paid')
-        .reduce((sum, order) => {
-            const amount = order.amount || order.price || '0';
-            const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
-            return sum + numericAmount;
-        }, 0);
+    }), [orders]);
 
-    // Calculate partial payment revenue (50% downpayments)
-    const partialRevenue = orders
-        .filter(order => order.payment === 'partial')
-        .reduce((sum, order) => {
-            const amount = order.amount || order.price || '0';
-            const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
-            return sum + (numericAmount * 0.5); // 50% downpayment
-        }, 0);
+    const totalRevenue = useMemo(() => orders.filter(order => order.payment === 'paid').reduce((sum, order) => {
+        const amount = order.amount || order.price || '0';
+        const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
+        return sum + numericAmount;
+    }, 0), [orders]);
+
+    const partialRevenue = useMemo(() => orders.filter(order => order.payment === 'partial').reduce((sum, order) => {
+        const amount = order.amount || order.price || '0';
+        const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
+        return sum + (numericAmount * 0.5);
+    }, 0), [orders]);
 
     const totalCollected = totalRevenue + partialRevenue;
 
@@ -623,8 +562,7 @@ export default function Orders() {
         try {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { status: newStatus });
-            // Update local state after successful Firestore update
-            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, status: newStatus } : order ));
+            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, status: newStatus } : order));
             alert("Order status updated successfully!");
         } catch (error) {
             console.error("Error updating order status:", error);
@@ -637,8 +575,7 @@ export default function Orders() {
         try {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { payment: newPaymentStatus });
-            // Update local state after successful Firestore update
-            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, payment: newPaymentStatus } : order ));
+            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, payment: newPaymentStatus } : order));
             alert("Payment status updated successfully!");
         } catch (error) {
             console.error("Error updating payment status:", error);
@@ -646,15 +583,8 @@ export default function Orders() {
         }
     };
 
-    const statusOptions = [
-        "All Status",
-        "Pending",
-        "Confirmed",
-        "Processing",
-        "Shipped",
-        "Delivered",
-    ];
-    
+    const statusOptions = ["All Status", "Pending", "Confirmed", "Processing", "Shipped", "Delivered"];
+
     if (loading) {
         return (
             <div className="flex justify-center items-center min-h-screen bg-[#F8F5F2]">
@@ -693,12 +623,8 @@ export default function Orders() {
                     {/* Enhanced Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                         <div
-                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
-                                statusFilter === "All Status"
-                                    ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20"
-                                    : "border-gray-200 hover:border-[#A68B69]/50"
-                            }`}
-                            onClick={() => setStatusFilter("All Status")}
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "All Status" ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20" : "border-gray-200 hover:border-[#A68B69]/50"}`}
+                            onClick={() => { setStatusFilter("All Status"); setCurrentPage(1); }}
                         >
                             <div className="absolute top-0 right-0 w-20 h-20 bg-[#A68B69]/10 rounded-full -translate-y-10 translate-x-10"></div>
                             <div className="relative">
@@ -706,9 +632,7 @@ export default function Orders() {
                                     <div className="w-12 h-12 bg-[#A68B69] rounded-xl flex items-center justify-center shadow-md">
                                         <Package className="w-6 h-6 text-white" />
                                     </div>
-                                    <div
-                                        className={`w-3 h-3 rounded-full ${statusFilter === "All Status" ? "bg-[#A68B69]" : "bg-gray-300"} transition-colors duration-200`}
-                                    ></div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "All Status" ? "bg-[#A68B69]" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Total Orders</p>
                                 <p className="text-3xl font-bold text-gray-900">{orderCounts.total}</p>
@@ -716,12 +640,8 @@ export default function Orders() {
                         </div>
 
                         <div
-                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
-                                statusFilter === "Pending"
-                                    ? "border-yellow-600 bg-yellow-50 shadow-yellow-200"
-                                    : "border-gray-200 hover:border-yellow-300"
-                            }`}
-                            onClick={() => setStatusFilter("Pending")}
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Pending" ? "border-yellow-600 bg-yellow-50 shadow-yellow-200" : "border-gray-200 hover:border-yellow-300"}`}
+                            onClick={() => { setStatusFilter("Pending"); setCurrentPage(1); }}
                         >
                             <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-500/10 rounded-full -translate-y-10 translate-x-10"></div>
                             <div className="relative">
@@ -729,9 +649,7 @@ export default function Orders() {
                                     <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center shadow-md">
                                         <Clock className="w-6 h-6 text-white" />
                                     </div>
-                                    <div
-                                        className={`w-3 h-3 rounded-full ${statusFilter === "Pending" ? "bg-yellow-500" : "bg-gray-300"} transition-colors duration-200`}
-                                    ></div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Pending" ? "bg-yellow-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Pending</p>
                                 <p className="text-3xl font-bold text-yellow-600">{orderCounts.pending}</p>
@@ -739,12 +657,8 @@ export default function Orders() {
                         </div>
 
                         <div
-                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
-                                statusFilter === "Processing"
-                                    ? "border-amber-600 bg-amber-50 shadow-amber-200"
-                                    : "border-gray-200 hover:border-amber-300"
-                            }`}
-                            onClick={() => setStatusFilter("Processing")}
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Processing" ? "border-amber-600 bg-amber-50 shadow-amber-200" : "border-gray-200 hover:border-amber-300"}`}
+                            onClick={() => { setStatusFilter("Processing"); setCurrentPage(1); }}
                         >
                             <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full -translate-y-10 translate-x-10"></div>
                             <div className="relative">
@@ -752,9 +666,7 @@ export default function Orders() {
                                     <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center shadow-md">
                                         <RefreshCw className="w-6 h-6 text-white" />
                                     </div>
-                                    <div
-                                        className={`w-3 h-3 rounded-full ${statusFilter === "Processing" ? "bg-amber-500" : "bg-gray-300"} transition-colors duration-200`}
-                                    ></div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Processing" ? "bg-amber-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Processing</p>
                                 <p className="text-3xl font-bold text-amber-600">{orderCounts.processing}</p>
@@ -762,12 +674,8 @@ export default function Orders() {
                         </div>
 
                         <div
-                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
-                                statusFilter === "Shipped"
-                                    ? "border-blue-600 bg-blue-50 shadow-blue-200"
-                                    : "border-gray-200 hover:border-blue-300"
-                            }`}
-                            onClick={() => setStatusFilter("Shipped")}
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Shipped" ? "border-blue-600 bg-blue-50 shadow-blue-200" : "border-gray-200 hover:border-blue-300"}`}
+                            onClick={() => { setStatusFilter("Shipped"); setCurrentPage(1); }}
                         >
                             <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full -translate-y-10 translate-x-10"></div>
                             <div className="relative">
@@ -775,9 +683,7 @@ export default function Orders() {
                                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
                                         <Package className="w-6 h-6 text-white" />
                                     </div>
-                                    <div
-                                        className={`w-3 h-3 rounded-full ${statusFilter === "Shipped" ? "bg-blue-500" : "bg-gray-300"} transition-colors duration-200`}
-                                    ></div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Shipped" ? "bg-blue-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Shipped</p>
                                 <p className="text-3xl font-bold text-blue-600">{orderCounts.shipped}</p>
@@ -785,12 +691,8 @@ export default function Orders() {
                         </div>
 
                         <div
-                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${
-                                statusFilter === "Delivered"
-                                    ? "border-green-600 bg-green-50 shadow-green-200"
-                                    : "border-gray-200 hover:border-green-300"
-                            }`}
-                            onClick={() => setStatusFilter("Delivered")}
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Delivered" ? "border-green-600 bg-green-50 shadow-green-200" : "border-gray-200 hover:border-green-300"}`}
+                            onClick={() => { setStatusFilter("Delivered"); setCurrentPage(1); }}
                         >
                             <div className="absolute top-0 right-0 w-20 h-20 bg-green-500/10 rounded-full -translate-y-10 translate-x-10"></div>
                             <div className="relative">
@@ -798,9 +700,7 @@ export default function Orders() {
                                     <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
                                         <CheckCircle className="w-6 h-6 text-white" />
                                     </div>
-                                    <div
-                                        className={`w-3 h-3 rounded-full ${statusFilter === "Delivered" ? "bg-green-500" : "bg-gray-300"} transition-colors duration-200`}
-                                    ></div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Delivered" ? "bg-green-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Delivered</p>
                                 <p className="text-3xl font-bold text-green-600">{orderCounts.delivered}</p>
@@ -820,7 +720,7 @@ export default function Orders() {
                                 type="text"
                                 placeholder="Search orders, customers, or products..."
                                 value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                                 className="w-full pl-12 pr-4 py-4 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-[#A68B69]/20 focus:border-[#A68B69] transition-all duration-200 text-sm bg-white"
                             />
                         </div>
@@ -831,13 +731,11 @@ export default function Orders() {
                             </div>
                             <select
                                 value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
+                                onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
                                 className="py-3 px-4 border-2 border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:ring-4 focus:ring-[#A68B69]/20 focus:border-[#A68B69] transition-all duration-200"
                             >
                                 {statusOptions.map((option) => (
-                                    <option key={option} value={option}>
-                                        {option}
-                                    </option>
+                                    <option key={option} value={option}>{option}</option>
                                 ))}
                             </select>
                         </div>
@@ -860,17 +758,20 @@ export default function Orders() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredOrders.length > 0 ? (
-                                    filteredOrders.map((order) => (
+                                {currentOrders.length > 0 ? (
+                                    currentOrders.map((order) => (
                                         <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
                                             <td className="p-4 font-medium text-gray-900">{order.id}</td>
-                                            <td className="p-4">{order.customer?.name || order.customerName || 'N/A'}</td>
-                                            <td className="p-4">{order.product || order.productName || 'N/A'}</td>
+                                            <td className="p-4">{order.items[0]?.name || 'N/A'}</td>
+                                            <td className="p-4">{order.items[0]?.productName || 'N/A'}</td>
                                             <td className="p-4">{formatOrderDate(order.date)}</td>
-                                            <td className="p-4 font-semibold text-gray-900">{formatCurrency(parseFloat(order.amount?.toString().replace(/[₱,]/g, '') || order.price?.toString().replace(/[₱,]/g, '') || '0'))}</td>
+                                            <td className="p-4">{order.items[0]?.total}</td>
+                                            
+                                            
                                             <td className="p-4">
                                                 <EnhancedStatusBadge status={order.status} />
                                             </td>
+                                           
                                             <td className="p-4">
                                                 <button
                                                     onClick={() => handleViewOrder(order)}
@@ -891,22 +792,38 @@ export default function Orders() {
                             </tbody>
                         </table>
                     </div>
-                    {filteredOrders.length > 0 && totalOrderCount > visibleOrdersCount && (
-                        <div className="p-4 flex justify-center">
-                            <button
-                                onClick={handleToggleOrders}
-                                className={`inline-flex items-center gap-2 px-6 py-3 border border-transparent text-sm font-medium rounded-xl transition-all duration-200 shadow-md ${visibleOrdersCount > 10 ? 'text-gray-700 bg-gray-100 hover:bg-gray-200' : 'text-white bg-[#A68B69] hover:bg-[#8C7355]'}`}
-                            >
-                                {visibleOrdersCount > 10 ? (
-                                    <>
-                                        <ChevronDown className="w-4 h-4 transform rotate-180" /> See Less Orders
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw className="w-4 h-4" /> See More Orders
-                                    </>
-                                )}
-                            </button>
+
+                    {/* Pagination Controls */}
+                    {filteredOrders.length > ordersPerPage && (
+                        <div className="p-4 flex justify-between items-center border-t border-gray-200">
+                            <div className="text-sm text-gray-600">
+                                Showing {startIndex + 1} to {Math.min(startIndex + ordersPerPage, filteredOrders.length)} of {filteredOrders.length} orders
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    disabled={currentPage === 1}
+                                    className={`p-2 rounded-lg border ${currentPage === 1 ? 'text-gray-400 bg-gray-100 cursor-not-allowed' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <button
+                                        key={page}
+                                        onClick={() => setCurrentPage(page)}
+                                        className={`w-8 h-8 rounded-lg text-sm font-medium ${currentPage === page ? 'bg-[#A68B69] text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                    className={`p-2 rounded-lg border ${currentPage === totalPages ? 'text-gray-400 bg-gray-100 cursor-not-allowed' : 'text-gray-700 bg-white hover:bg-gray-50'}`}
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

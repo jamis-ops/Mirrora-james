@@ -1,97 +1,311 @@
-// src/pages/Settings.jsx
+import React, { useState } from 'react';
 
-import React from "react";
-import { User, Palette, Settings as SettingsIcon } from "lucide-react";
+const Settings = () => {
+  const [activeTab, setActiveTab] = useState('password');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
-export default function Settings() {
-  return (
-    <div className="flex-1 p-8 overflow-y-auto">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500">Configure your application preferences.</p>
-      </header>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* General Settings Card */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-all duration-300 hover:shadow-md">
-          <div className="flex items-center gap-4 mb-4">
-            <SettingsIcon size={24} className="text-gray-500" />
-            <h2 className="text-xl font-semibold text-gray-800">General Settings</h2>
-          </div>
-          <p className="text-gray-600 mb-4">
-            Manage your store information and primary configurations.
-          </p>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Store Name</label>
-              <input 
-                type="text" 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#A67B5B] focus:ring focus:ring-[#A67B5B] focus:ring-opacity-50" 
-                placeholder="My Awesome Mirror Store" 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Contact Email</label>
-              <input 
-                type="email" 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#A67B5B] focus:ring focus:ring-[#A67B5B] focus:ring-opacity-50" 
-                placeholder="contact@mirrors.com" 
-              />
-            </div>
-            <button className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#A67B5B] hover:bg-[#8C7355] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#A67B5B]">
-              Save Changes
-            </button>
-          </div>
-        </div>
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
-        {/* Appearance Settings Card */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-all duration-300 hover:shadow-md">
-          <div className="flex items-center gap-4 mb-4">
-            <Palette size={24} className="text-gray-500" />
-            <h2 className="text-xl font-semibold text-gray-800">Appearance</h2>
-          </div>
-          <p className="text-gray-600 mb-4">
-            Customize the look and feel of your admin panel.
-          </p>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Theme</label>
-              <select className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#A67B5B] focus:ring focus:ring-[#A67B5B] focus:ring-opacity-50">
-                <option>Light Mode</option>
-                <option>Dark Mode</option>
-                <option>System Default</option>
-              </select>
-            </div>
-            <button className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#A67B5B] hover:bg-[#8C7355] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#A67B5B]">
-              Apply Theme
-            </button>
-          </div>
-        </div>
-        
-        {/* Account Settings Card (full width on small screens) */}
-        <div className="col-span-1 md:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-all duration-300 hover:shadow-md">
-            <div className="flex items-center gap-4 mb-4">
-                <User size={24} className="text-gray-500" />
-                <h2 className="text-xl font-semibold text-gray-800">Account</h2>
-            </div>
-            <p className="text-gray-600 mb-4">
-                Update your login and profile information.
-            </p>
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">Change Password</label>
-                    <input 
-                        type="password" 
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#A67B5B] focus:ring focus:ring-[#A67B5B] focus:ring-opacity-50" 
-                        placeholder="New Password" 
-                    />
-                </div>
-                <button className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#A67B5B] hover:bg-[#8C7355] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#A67B5B]">
-                    Update Password
-                </button>
-            </div>
-        </div>
+  const [businessData, setBusinessData] = useState({
+    businessName: '',
+    location: '',
+    contactNumber: '',
+    email: ''
+  });
+
+  const handlePasswordChange = (field, value) => {
+    setPasswordData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleBusinessChange = (field, value) => {
+    setBusinessData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handlePasswordSubmit = () => {
+    if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      alert('Please fill in all password fields');
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      alert('New passwords do not match');
+      return;
+    }
+    alert('Password updated successfully');
+    console.log('Password change submitted:', passwordData);
+  };
+
+  const handleBusinessSubmit = () => {
+    if (!businessData.businessName || !businessData.location || !businessData.contactNumber) {
+      alert('Please fill in all required business fields');
+      return;
+    }
+    alert('Business information saved successfully');
+    console.log('Business info submitted:', businessData);
+  };
+
+  const IconPlaceholder = ({ name, size, color, style }) => (
+    <span style={style} className={`icon icon-${name}`} aria-hidden="true">
+      {name === 'lock-closed' && '🔒'}
+      {name === 'business' && '🏢'}
+      {name === 'location' && '📍'}
+      {name === 'call' && '📞'}
+      {name === 'eye' && '👁️'}
+      {name === 'eye-off' && '👁️‍🗨️'}
+      {name === 'save' && '💾'}
+    </span>
+  );
+
+  const TabButton = ({ isActive, onPress, icon, title }) => (
+    <button
+      onClick={onPress}
+      className={`flex-1 py-4 px-4 rounded-lg mx-1 flex flex-row items-center justify-center ${
+        isActive ? 'bg-[#A68B69]' : 'bg-transparent'
+      }`}
+      style={{ border: 'none', cursor: 'pointer' }}
+    >
+      <IconPlaceholder
+        name={icon}
+        size={18}
+        color={isActive ? '#FFFFFF' : '#6B7280'}
+        style={{ marginRight: 8 }}
+      />
+      <span className={`font-medium text-sm ${
+        isActive ? 'text-white' : 'text-gray-600'
+      }`}>
+        {title}
+      </span>
+    </button>
+  );
+
+  const InputField = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    secureTextEntry = false,
+    showToggle = false,
+    onToggle,
+    showPassword,
+    icon,
+    multiline = false,
+    numberOfLines = 10
+  }) => (
+    <div className="mb-6">
+      <div className="flex flex-row items-center mb-2">
+        {icon && (
+          <IconPlaceholder
+            name={icon}
+            size={16}
+            color="#A68B69"
+            style={{ marginRight: 4 }}
+          />
+        )}
+        <label className="text-sm font-medium text-gray-700">{label}</label>
+      </div>
+      <div className="relative">
+        {multiline ? (
+          <textarea
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="w-full px-4 py-4 bg-[#F9F9F9] border-2 border-[#CAC8C5] rounded-lg text-gray-800 h-20"
+            style={{
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        ) : (
+          <input
+            type={secureTextEntry && !showPassword ? 'password' : 'text'}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="w-full px-4 py-4 bg-[#F9F9F9] border-2 border-[#CAC8C5] rounded-lg text-gray-800 h-12"
+            style={{
+              outline: 'none',
+              boxSizing: 'border-box',
+            }}
+          />
+        )}
+        {showToggle && (
+          <button
+            onClick={onToggle}
+            className="absolute right-3 top-3"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}
+            type="button"
+          >
+            <IconPlaceholder
+              name={showPassword ? 'eye-off' : 'eye'}
+              size={20}
+              color="#6B7280"
+            />
+          </button>
+        )}
       </div>
     </div>
   );
-}
+
+  const PasswordTab = () => (
+    <div className="bg-[#E0DAD6] rounded-xl shadow-lg overflow-hidden mx-4 mb-6 p-6">
+      <div className="border-b border-[#CAC8C5] pb-6 mb-6">
+        <div className="flex flex-row items-center mb-2">
+          <IconPlaceholder name="lock-closed" size={20} color="#A68B69" />
+          <h2 className="text-xl font-semibold text-gray-800 ml-2">
+            Change Password
+          </h2>
+        </div>
+        <p className="text-gray-600">
+          Update your account password for better security
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <InputField
+          label="Current Password"
+          value={passwordData.oldPassword}
+          onChange={(e) => handlePasswordChange('oldPassword', e.target.value)}
+          placeholder="Enter current password"
+          secureTextEntry={true}
+          showToggle={true}
+          showPassword={showOldPassword}
+          onToggle={() => setShowOldPassword(!showOldPassword)}
+        />
+
+        <InputField
+          label="New Password"
+          value={passwordData.newPassword}
+          onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+          placeholder="Enter new password"
+          secureTextEntry={true}
+          showToggle={true}
+          showPassword={showNewPassword}
+          onToggle={() => setShowNewPassword(!showNewPassword)}
+        />
+
+        <InputField
+          label="Confirm New Password"
+          value={passwordData.confirmPassword}
+          onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+          placeholder="Confirm new password"
+          secureTextEntry={true}
+        />
+
+        <button
+          onClick={handlePasswordSubmit}
+          className="w-full py-4 px-6 bg-[#A68B69] rounded-lg flex flex-row items-center justify-center"
+          style={{ border: 'none', cursor: 'pointer' }}
+        >
+          <IconPlaceholder name="save" size={18} color="#FFFFFF" />
+          <span className="text-white font-medium ml-2">Update Password</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  const BusinessTab = () => (
+    <div className="bg-[#E0DAD6] rounded-xl shadow-lg overflow-hidden mx-4 mb-6 p-6">
+      <div className="border-b border-[#CAC8C5] pb-6 mb-6">
+        <div className="flex flex-row items-center mb-2">
+          <IconPlaceholder name="business" size={20} color="#A68B69" />
+          <h2 className="text-xl font-semibold text-gray-800 ml-2">
+            Business Information
+          </h2>
+        </div>
+        <p className="text-gray-600">
+          Manage your business details and contact information
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        <InputField
+          label="Business Name"
+          value={businessData.businessName}
+          onChange={(e) => handleBusinessChange('businessName', e.target.value)}
+          placeholder="Enter business name"
+        />
+
+        <InputField
+          label="Business Location"
+          value={businessData.location}
+          onChange={(e) => handleBusinessChange('location', e.target.value)}
+          placeholder="Enter complete business address"
+          icon="location"
+          multiline={true}
+          numberOfLines={3}
+        />
+
+        <InputField
+          label="Contact Number"
+          value={businessData.contactNumber}
+          onChange={(e) => handleBusinessChange('contactNumber', e.target.value)}
+          placeholder="Enter contact number"
+          icon="call"
+        />
+
+        <InputField
+          label="Email Address"
+          value={businessData.email}
+          onChange={(e) => handleBusinessChange('email', e.target.value)}
+          placeholder="Enter email address"
+        />
+
+        <button
+          onClick={handleBusinessSubmit}
+          className="w-full py-4 px-6 bg-[#A68B69] rounded-lg flex flex-row items-center justify-center"
+          style={{ border: 'none', cursor: 'pointer' }}
+        >
+          <IconPlaceholder name="save" size={18} color="#FFFFFF" />
+          <span className="text-white font-medium ml-2">Save Business Information</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex-1 bg-[#F9F9F9]">
+      <header className="bg-[#A68B69] shadow-sm">
+        <div className="px-6 py-4">
+          <h1 className="text-2xl font-bold text-white">Settings</h1>
+          <p className="text-white/80 mt-1">
+            Manage your account and business information
+          </p>
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto" style={{ height: 'calc(100vh - 100px)' }}>
+        <div className="p-4">
+          <div className="bg-[#E6E6E6] rounded-lg p-1 flex flex-row">
+            <TabButton
+              isActive={activeTab === 'password'}
+              onPress={() => setActiveTab('password')}
+              icon="lock-closed"
+              title="Change Password"
+            />
+            <TabButton
+              isActive={activeTab === 'business'}
+              onPress={() => setActiveTab('business')}
+              icon="business"
+              title="Business Info"
+            />
+          </div>
+        </div>
+
+        {activeTab === 'password' ? <PasswordTab /> : <BusinessTab />}
+      </div>
+    </div>
+  );
+};
+
+export default Settings;

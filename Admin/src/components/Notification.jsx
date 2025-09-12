@@ -1,40 +1,58 @@
+// src/components/Notification.jsx
+
 import React from "react";
 import { Info, X } from "lucide-react";
 
-export default function Notification({ title, message, onDismiss }) {
+export default function Notification({ title, message, onDismiss, type = "info" }) {
+  const typeStyles = {
+    info: {
+      iconColor: "text-blue-500",
+      bgColor: "bg-blue-50",
+      borderColor: "border-blue-200",
+      titleColor: "text-blue-800",
+      messageColor: "text-blue-600",
+    },
+    success: {
+      iconColor: "text-green-500",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
+      titleColor: "text-green-800",
+      messageColor: "text-green-600",
+    },
+    warning: {
+      iconColor: "text-yellow-500",
+      bgColor: "bg-yellow-50",
+      borderColor: "border-yellow-200",
+      titleColor: "text-yellow-800",
+      messageColor: "text-yellow-600",
+    },
+    danger: {
+      iconColor: "text-red-500",
+      bgColor: "bg-red-50",
+      borderColor: "border-red-200",
+      titleColor: "text-red-800",
+      messageColor: "text-red-600",
+    },
+  };
+
+  const currentStyles = typeStyles[type] || typeStyles.info;
+
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 12,
-        padding: 16,
-        background: "#fff",
-        borderRadius: 12,
-        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-        border: "1px solid #e5e7eb",
-        fontFamily: "sans-serif",
-      }}
+      className={`flex items-start gap-4 p-4 rounded-xl shadow-lg border-l-4 ${currentStyles.borderColor} ${currentStyles.bgColor} transition-transform duration-300 ease-out transform hover:scale-[1.02]`}
     >
-      <div style={{ color: "#8B5E3C", flexShrink: 0 }}>
-        <Info size={20} />
+      <div className={`flex-shrink-0 ${currentStyles.iconColor}`}>
+        <Info size={24} />
       </div>
-      <div style={{ flexGrow: 1 }}>
-        <h4 style={{ fontSize: 14, fontWeight: 600, color: "#2C1810", marginBottom: 4 }}>
+      <div className="flex-grow">
+        <h4 className={`text-sm font-semibold ${currentStyles.titleColor} mb-1`}>
           {title}
         </h4>
-        <p style={{ fontSize: 12, color: "#6b7280" }}>{message}</p>
+        <p className={`text-xs ${currentStyles.messageColor}`}>{message}</p>
       </div>
       <button
         onClick={onDismiss}
-        style={{
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#9ca3af",
-          padding: 0,
-          flexShrink: 0,
-        }}
+        className="flex-shrink-0 p-1 text-gray-400 hover:text-gray-600 transition-colors duration-200 rounded-full"
       >
         <X size={16} />
       </button>

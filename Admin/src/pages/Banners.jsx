@@ -183,7 +183,7 @@ export default function Banners() {
 
       {/* Edit Banner Modal */}
       {isEditModalOpen && currentBanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+        <div className="fixed inset-0  bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-900">Edit Banner</h2>
@@ -260,7 +260,7 @@ export default function Banners() {
 
       {/* Create New Banner Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+        <div className="fixed inset-0  bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto relative">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-900">Create New Banner</h2>

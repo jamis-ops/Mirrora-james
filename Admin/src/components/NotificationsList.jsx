@@ -16,48 +16,32 @@ export default function NotificationsList({ onClose }) {
   };
 
   return (
-    <div
-      style={{
-        width: 300,
-        padding: "24px 16px",
-        borderLeft: "1px solid #e5e7eb",
-        background: "#f9fafb",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        overflowY: "auto",
-        boxSizing: "border-box",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h3 style={{ fontSize: 18, fontWeight: 600, color: "#2C1810", fontFamily: "sans-serif" }}>
+    <div className="w-80 px-4 py-6 border-l border-gray-200 bg-gray-50 flex flex-col gap-4 overflow-y-auto box-border">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-800 font-sans">
           Notifications
         </h3>
         <button
           onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#6b7280",
-            padding: 0,
-          }}
+          className="p-1 text-gray-500 hover:text-gray-700 transition-colors duration-200"
         >
           <X size={20} />
         </button>
       </div>
 
       {notifications.length > 0 ? (
-        notifications.map((notification) => (
-          <Notification
-            key={notification.id}
-            title={notification.title}
-            message={notification.message}
-            onDismiss={() => dismissNotification(notification.id)}
-          />
-        ))
+        <div className="space-y-4">
+          {notifications.map((notification) => (
+            <Notification
+              key={notification.id}
+              title={notification.title}
+              message={notification.message}
+              onDismiss={() => dismissNotification(notification.id)}
+            />
+          ))}
+        </div>
       ) : (
-        <p style={{ fontSize: 14, color: "#6b7280", fontFamily: "sans-serif" }}>
+        <p className="text-sm text-gray-600 font-sans">
           No new notifications.
         </p>
       )}

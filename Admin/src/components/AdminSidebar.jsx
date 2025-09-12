@@ -1,3 +1,5 @@
+// src/components/AdminSidebar.jsx
+
 import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -10,14 +12,16 @@ import {
   HelpCircle,
   ChevronDown,
   LogOut,
-  MessageCircle, // <-- Import the MessageCircle icon
+  MessageCircle,
+  Star, // <-- Import the Star icon for Reviews
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Products", href: "/admin/products", icon: Package },
   { name: "Orders", href: "/admin/orders", icon: ShoppingCart },
-  { name: "Messages", href: "/admin/messages", icon: MessageCircle }, 
+  { name: "Messages", href: "/admin/messages", icon: MessageCircle },
+  { name: "Reviews", href: "/admin/reviews", icon: Star }, // <-- Add Reviews here
   { name: "Banners", href: "/admin/banners", icon: Image },
   { name: "FAQ", href: "/admin/faq", icon: HelpCircle },
 ];
@@ -34,15 +38,15 @@ export default function AdminSidebar() {
   return (
     <aside
       className="
-        w-64 
-        min-h-screen 
-        bg-gradient-to-b 
-        from-gray-50 
-        to-gray-100 
-        p-6 
-        flex 
-        flex-col 
-        border-r 
+        w-64
+        min-h-screen
+        bg-gradient-to-b
+        from-gray-50
+        to-gray-100
+        p-6
+        flex
+        flex-col
+        border-r
         border-gray-200
         font-sans
       "
@@ -56,7 +60,6 @@ export default function AdminSidebar() {
           <h1 className="text-xl font-bold text-[#2C1810]">
             Mirrora Philippines
           </h1>
-    
         </div>
       </div>
 
@@ -69,18 +72,18 @@ export default function AdminSidebar() {
             end={item.href === "/admin"}
             className={({ isActive }) =>
               `
-              flex 
-              items-center 
-              gap-3 
-              p-3 
-              rounded-lg 
-              text-sm 
-              font-bold 
-              transition-all 
-              duration-300 
+              flex
+              items-center
+              gap-3
+              p-3
+              rounded-lg
+              text-sm
+              font-bold
+              transition-all
+              duration-300
               mb-2
-              ${isActive 
-                ? 'bg-gradient-to-r from-[#A67B5B] to-[#8B5E3C] text-white shadow-md' 
+              ${isActive
+                ? 'bg-gradient-to-r from-[#A67B5B] to-[#8B5E3C] text-white shadow-md'
                 : 'text-[#2C1810] hover:bg-[#EDE7E0] hover:text-[#A67B5B]'
               }`
             }

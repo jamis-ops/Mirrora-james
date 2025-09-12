@@ -18,8 +18,12 @@ export default function Categories() {
     const [currentCategory, setCurrentCategory] = useState({ id: null, name: "", imageUrl: "" });
     const [imageFile, setImageFile] = useState(null);
     const [loading, setLoading] = useState(true);
-    const navigate = useNavigate();
 
+    // State for delete confirmation modal
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [categoryToDeleteId, setCategoryToDeleteId] = useState(null);
+
+    const navigate = useNavigate();
     const categoriesCollectionRef = collection(db, "categories");
 
     useEffect(() => {
@@ -64,14 +68,14 @@ export default function Categories() {
             alert("Category name is required.");
             return;
         }
-        
+
         let imageUrl = currentCategory.imageUrl;
         if (imageFile) {
             try {
                 const formData = new FormData();
                 formData.append("file", imageFile);
                 formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-                
+
                 const response = await axios.post(
                     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
                     formData
@@ -83,7 +87,7 @@ export default function Categories() {
                 return;
             }
         }
-        
+
         if (!imageUrl) {
             alert("Image is required for the category.");
             return;
@@ -110,19 +114,22 @@ export default function Categories() {
         }
     };
 
-    const handleDelete = async (e, id) => {
-        e.stopPropagation();
-        const confirmDelete = window.confirm(
-            "Are you sure you want to delete this category? This will not delete the associated products."
-        );
-        if (confirmDelete) {
-            try {
-                const categoryDoc = doc(db, "categories", id);
-                await deleteDoc(categoryDoc);
-            } catch (error) {
-                console.error("Error deleting category:", error);
-                alert("Failed to delete category. Please try again.");
-            }
+    // Delete confirmation modal handlers
+    const openDeleteModal = (e, id) => {
+        e.stopPropagation(); // Prevent triggering the card click event
+        setCategoryToDeleteId(id);
+        setIsDeleteModalOpen(true);
+    };
+
+    const deleteCategory = async (id) => {
+        try {
+            const categoryDoc = doc(db, "categories", id);
+            await deleteDoc(categoryDoc);
+            console.log("Category deleted successfully.");
+            // Optionally, add a success toast/notification here
+        } catch (error) {
+            console.error("Error deleting category:", error);
+            alert("Failed to delete category. Please try again.");
         }
     };
 
@@ -159,7 +166,7 @@ export default function Categories() {
                                     alt={cat.name}
                                     className="w-full h-48 object-cover"
                                 />
-                                <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-300">
+                                <div className="absolute inset-0  bg-opacity-40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-300">
                                     <div className="flex gap-4">
                                         <button
                                             onClick={(e) => { e.stopPropagation(); openEditModal(cat); }}
@@ -168,7 +175,7 @@ export default function Categories() {
                                             <Pencil size={20} />
                                         </button>
                                         <button
-                                            onClick={(e) => handleDelete(e, cat.id)}
+                                            onClick={(e) => openDeleteModal(e, cat.id)}
                                             className="p-2 rounded-full bg-white text-red-500 hover:bg-gray-200 transition-colors"
                                         >
                                             <Trash size={20} />
@@ -188,8 +195,9 @@ export default function Categories() {
                 )}
             </div>
 
+            {/* Add/Edit Category Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center p-4 z-50">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-gray-900">
@@ -241,6 +249,43 @@ export default function Categories() {
                                 className="bg-[#A68B69] text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors hover:bg-[#8C7355]"
                             >
                                 {isEdit ? "Update" : "Add"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold text-gray-900">Confirm Deletion</h2>
+                            <button onClick={() => { setIsDeleteModalOpen(false); setCategoryToDeleteId(null); }} className="text-gray-400 hover:text-gray-600">
+                                <X size={24} />
+                            </button>
+                        </div>
+                        <p className="text-gray-600 mb-6">
+                            Are you sure you want to delete this category? This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => { setIsDeleteModalOpen(false); setCategoryToDeleteId(null); }}
+                                className="py-2 px-4 rounded-lg border border-gray-300 text-sm font-semibold transition-colors hover:bg-gray-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (categoryToDeleteId) {
+                                        await deleteCategory(categoryToDeleteId);
+                                    }
+                                    setIsDeleteModalOpen(false);
+                                    setCategoryToDeleteId(null);
+                                }}
+                                className="bg-red-500 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors hover:bg-red-600"
+                            >
+                                Delete
                             </button>
                         </div>
                     </div>

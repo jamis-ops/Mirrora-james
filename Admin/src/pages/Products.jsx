@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft, Package, Hash } from "lucide-react";
+import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft, Package, Hash, ChevronLeft, ChevronRight } from "lucide-react";
 import ProductCard from "../components/ProductCard.jsx";
 import { db } from "../../Backend/firebaseConfig.js";
 import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
@@ -22,7 +22,7 @@ const categories = [
 
 const getCategoryName = (id) => {
     const category = categories.find(cat => cat.id === id);
-    return category ? category.name : "Unknown Category";
+    return category ? category.name : " ";
 };
 
 export default function Products() {
@@ -41,6 +41,15 @@ export default function Products() {
     });
     const [loading, setLoading] = useState(true);
     const [imageFile, setImageFile] = useState(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [productToDelete, setProductToDelete] = useState(null);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const productsPerPage = 5;
+
+    // Add product loading state
+    const [isAddingProduct, setIsAddingProduct] = useState(false);
 
     const categoryName = getCategoryName(categoryId);
     const productsCollectionRef = collection(db, "products");
@@ -67,6 +76,14 @@ export default function Products() {
 
         return () => unsubscribe();
     }, [categoryId]);
+
+    // Pagination Logic
+    const indexOfLastProduct = currentPage * productsPerPage;
+    const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
+    const currentProducts = products.slice(indexOfFirstProduct, indexOfLastProduct);
+    const totalPages = Math.ceil(products.length / productsPerPage);
+
+    const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
     const openAddModal = () => {
         setIsEdit(false);
@@ -112,7 +129,7 @@ export default function Products() {
             alert("Product name is required.");
             return;
         }
-        if (!currentProduct.price || currentProduct.price.trim() === "") {
+        if (!currentProduct.price || currentProduct.price.toString().trim() === "") {
             alert("Price is required.");
             return;
         }
@@ -124,6 +141,8 @@ export default function Products() {
             alert("Category is missing. Please refresh the page or try again.");
             return;
         }
+
+        setIsAddingProduct(true); // Set loading state ON
 
         let imageUrl = currentProduct.imageUrl;
         if (imageFile) {
@@ -140,12 +159,14 @@ export default function Products() {
             } catch (error) {
                 console.error("Cloudinary upload failed: ", error.response ? error.response.data : error.message);
                 alert("Failed to upload image. Please check your Cloudinary settings.");
+                setIsAddingProduct(false); // Reset loading state on error
                 return;
             }
         }
         
         if (!imageUrl) {
             alert("Image is required for the product.");
+            setIsAddingProduct(false); // Reset loading state on error
             return;
         }
 
@@ -171,20 +192,31 @@ export default function Products() {
         } catch (error) {
             console.error("Firebase save operation failed: ", error);
             alert("Failed to save product to Firestore. Check your database rules and connection.");
+        } finally {
+            setIsAddingProduct(false); // Set loading state OFF, regardless of success or failure
         }
     };
 
-    const handleDelete = async (id) => {
-        const confirmDelete = window.confirm("Are you sure you want to delete this product?");
-        if (confirmDelete) {
-            try {
-                const productDocRef = doc(db, "products", id);
-                await deleteDoc(productDocRef);
-                console.log("Product deleted successfully.");
-            } catch (error) {
-                console.error("Error deleting product: ", error);
-                alert("Failed to delete product. Please try again.");
-            }
+    const openDeleteModal = (product) => {
+        setProductToDelete(product);
+        setIsDeleteModalOpen(true);
+    };
+
+    const closeDeleteModal = () => {
+        setIsDeleteModalOpen(false);
+        setProductToDelete(null);
+    };
+
+    const handleDelete = async () => {
+        if (!productToDelete) return;
+        try {
+            const productDocRef = doc(db, "products", productToDelete.id);
+            await deleteDoc(productDocRef);
+            console.log("Product deleted successfully.");
+            closeDeleteModal();
+        } catch (error) {
+            console.error("Error deleting product: ", error);
+            alert("Failed to delete product. Please try again.");
         }
     };
 
@@ -211,27 +243,33 @@ export default function Products() {
                     </button>
                     <div>
                         <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                            Products in {categoryName}
+                            Products {categoryName}
                         </h1>
                         <p className="text-gray-600 text-lg">Manage your mirror products collection</p>
                     </div>
                 </div>
                 <button
                     onClick={openAddModal}
-                    className="bg-gradient-to-r from-[#A68B69] to-[#8C7355] text-white py-3 px-6 rounded-xl font-semibold flex items-center gap-3 transition-all duration-300 hover:shadow-lg hover:scale-105 transform"
+                    disabled={isAddingProduct} // Disable button while adding
+                    className={`bg-gradient-to-r from-[#A68B69] to-[#8C7355] text-white py-3 px-6 rounded-xl font-semibold flex items-center gap-3 transition-all duration-300 hover:shadow-lg hover:scale-105 transform ${isAddingProduct ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
-                    <Plus size={20} /> Add New Product
+                    {isAddingProduct ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white mx-auto"></div>
+                    ) : (
+                        <Plus size={20} />
+                    )}
+                    Add New Product
                 </button>
             </header>
-
+            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                {products.length > 0 ? (
-                    products.map((product) => (
+                {currentProducts.length > 0 ? (
+                    currentProducts.map((product) => (
                         <ProductCard
                             key={product.id}
                             product={product}
                             onEdit={() => openEditModal(product)}
-                            onDelete={() => handleDelete(product.id)}
+                            onDelete={() => openDeleteModal(product)}
                         />
                     ))
                 ) : (
@@ -242,19 +280,44 @@ export default function Products() {
                     </div>
                 )}
                 
-                {/* Add New Product Card */}
-                <button
-                    onClick={openAddModal}
-                    className="w-full h-full min-h-[320px] border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:border-[#A68B69] hover:text-[#A68B69] transition-all duration-300 hover:bg-gray-50 group"
-                >
-                    <Plus size={48} className="mb-3 group-hover:scale-110 transition-transform duration-300" />
-                    <span className="text-lg font-semibold">Add New Product</span>
-                </button>
+                {/* Add New Product Card - Only show if there's no data or on the first page */}
+                {currentProducts.length === 0 && currentPage === 1 && (
+                    <button
+                        onClick={openAddModal}
+                        className="w-full h-full min-h-[320px] border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:border-[#A68B69] hover:text-[#A68B69] transition-all duration-300 hover:bg-gray-50 group"
+                    >
+                        <Plus size={48} className="mb-3 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="text-lg font-semibold">Add New Product</span>
+                    </button>
+                )}
             </div>
 
-            {/* Enhanced Modal */}
+            {/* Pagination Controls */}
+            {products.length > productsPerPage && (
+                <div className="flex justify-center items-center gap-4 mt-8">
+                    <button
+                        onClick={() => paginate(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+                    <span className="text-lg font-semibold text-gray-800">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                        onClick={() => paginate(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+            )}
+
+            {/* Enhanced Add/Edit Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-2xl font-bold text-gray-900">
@@ -360,9 +423,41 @@ export default function Products() {
                             </button>
                             <button
                                 onClick={handleSave}
-                                className="bg-gradient-to-r from-[#A68B69] to-[#8C7355] text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg transform hover:scale-105"
+                                disabled={isAddingProduct} // Disable button while adding
+                                className={`text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg transform ${isAddingProduct ? 'bg-gradient-to-r from-gray-400 to-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-[#A68B69] to-[#8C7355] hover:scale-105'}`}
                             >
-                                {isEdit ? "Update Product" : "Add Product"}
+                                {isAddingProduct ? (
+                                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white mx-auto"></div>
+                                ) : (
+                                    <>{isEdit ? "Update Product" : "Add Product"}</>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* Delete Confirmation Modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+                        <div className="flex justify-center mb-4">
+                            <Trash size={48} className="text-red-500" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Confirm Deletion</h2>
+                        <p className="text-gray-600 mb-6">Are you sure you want to delete <strong className="font-semibold text-gray-800">{productToDelete?.name}</strong>? This action cannot be undone.</p>
+                        <div className="flex justify-center gap-4">
+                            <button
+                                onClick={closeDeleteModal}
+                                className="py-3 px-6 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold transition-all duration-200 hover:bg-gray-50 hover:border-gray-400"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                className="bg-red-500 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 hover:bg-red-600"
+                            >
+                                Delete
                             </button>
                         </div>
                     </div>
