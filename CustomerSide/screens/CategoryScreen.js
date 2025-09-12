@@ -1,3 +1,5 @@
+// src/pages/CategoryScreen.jsx
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -14,7 +16,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Firebase
-import { collection, getDocs } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore"; // Import onSnapshot
 import { db } from "../Backend/firebaseConfig";
 
 const { width } = Dimensions.get("window");
@@ -26,24 +28,28 @@ export default function CategoryScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "categories"));
+    // ⚡️ Listens for real-time changes in the 'categories' collection
+    const unsubscribe = onSnapshot(
+      collection(db, "categories"),
+      (querySnapshot) => {
         const data = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        console.log("🔥 Categories fetched:", data);
+        console.log("🔥 Categories updated:", data);
         setCategories(data);
-      } catch (error) {
-        console.error("❌ Error fetching categories:", error);
-      } finally {
+        setLoading(false);
+      },
+      (error) => {
+        // Handles any errors in the listener
+        console.error("❌ Error listening to categories:", error);
         setLoading(false);
       }
-    };
+    );
 
-    fetchCategories();
+    // 🧹 Cleanup function to stop listening when the component unmounts
+    return () => unsubscribe();
   }, []);
 
   if (loading) {
@@ -65,7 +71,7 @@ export default function CategoryScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ✅ Custom Header */}
+      {/* Custom Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -77,7 +83,7 @@ export default function CategoryScreen() {
         <View style={{ width: 30 }} />
       </View>
 
-      {/* ✅ Category List */}
+      {/* Category List */}
       <FlatList
         data={categories}
         keyExtractor={(item) => item.id}

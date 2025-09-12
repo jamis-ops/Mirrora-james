@@ -7,7 +7,7 @@ import Orders from "./pages/Orders.jsx";
 import Settings from "./pages/Settings.jsx";
 import Banners from "./pages/Banners.jsx";
 import FAQ from "./pages/FAQ.jsx";
-import Categories from "./pages/Categories.jsx"; // Import Categories
+import Categories from "./pages/Categories.jsx";
 import { ProductsProvider } from "./Context/ProductsContext.jsx";
 import AdminLayout from "./components/AdminLayout.jsx";
 import LogIn from "./pages/Login.jsx";
@@ -20,20 +20,26 @@ export default function App() {
     <BrowserRouter>
       <ProductsProvider>
         <Routes>
-          {/* Default route = Login page */}
+          {/* Default route for the Login page */}
           <Route path="/" element={<LogIn />} />
 
-          {/* Admin routes */}
+          {/* All admin-related routes are nested under the /admin path */}
           <Route path="/admin" element={<AdminLayout />}>
+            {/* The index route for /admin, which displays the dashboard */}
             <Route index element={<Index />} />
-            {/* When the user clicks the "Products" link, they will see the Categories page first */}
+            {/* Route for displaying all products, starting with categories */}
             <Route path="products" element={<Categories />} />
-            {/* This route handles navigating to a specific category's products */}
+            {/* Route for displaying products within a specific category */}
             <Route path="products/:categoryId" element={<Products />} />
+            {/* Route for the orders management page */}
             <Route path="orders" element={<Orders />} />
+            {/* Route for the banners management page */}
             <Route path="banners" element={<Banners />} />
-            <Route path="messages" element={<Messages/>} />
+            {/* Route for the messages page */}
+            <Route path="messages" element={<Messages />} />
+            {/* Route for the FAQ management page */}
             <Route path="faq" element={<FAQ />} />
+            {/* Route for the general settings page */}
             <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>

@@ -18,7 +18,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import Toast from "react-native-toast-message";
 
 // Firebase
-import {    
+import {
   collection,
   getDocs,
   doc,
@@ -50,54 +50,14 @@ const PLACEHOLDER = require("../assets/placeholder.png");
 
 // ★ NEW: helper that guarantees a valid Image source or returns null
 const safeImageSource = (src) => {
-  // Allow already-required local images
   if (typeof src === "number") return src;
-  // Allow object with string uri
   if (src && typeof src === "object" && typeof src.uri === "string" && src.uri.trim() !== "") {
     return src;
   }
-  // Allow raw string URL
   if (typeof src === "string" && src.trim() !== "") {
     return { uri: src.trim() };
   }
-  // Anything else (boolean, null, undefined, empty) → invalid
   return null;
-};
-
-// ✅ The category names now perfectly match the images you provided.
-const CATEGORIES = [
-  "All",
-  "Grid Mirrors",
-  "Capsule Mirrors",
-  "Round Mirrors",
-  "Irregular Mirrors",
-  "Arch Mirrors",
-];
-
-// ⭐️ CategoriesDropdown Component
-const CategoriesDropdown = ({ isVisible, onClose, onSelectCategory }) => {
-  if (!isVisible) return null;
-
-  return (
-    <TouchableWithoutFeedback onPress={onClose}>
-      <View style={styles.dropdownOverlay}>
-        <View style={styles.dropdownContainer}>
-          {CATEGORIES.map((category, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.dropdownItem}
-              onPress={() => {
-                onSelectCategory(category);
-                onClose();
-              }}
-            >
-              <Text style={styles.dropdownText}>{category}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </TouchableWithoutFeedback>
-  );
 };
 
 export default function HomeScreen() {
@@ -107,8 +67,6 @@ export default function HomeScreen() {
   const [products, setProducts] = useState([]);
   const [banners, setBanners] = useState([]);
   const [tempClicked, setTempClicked] = useState({});
-  const [isDropdownVisible, setDropdownVisible] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
 
   // Load fonts
@@ -137,18 +95,13 @@ export default function HomeScreen() {
     fetchData();
   }, []);
 
-  // Fetch products by category
+  // Fetch products
   useEffect(() => {
     const fetchProducts = async () => {
       setIsLoading(true);
       try {
         const productsRef = collection(db, "products");
-        let q = productsRef;
-        if (selectedCategory && selectedCategory !== "All") {
-          // This uses the "category" field on each product document
-          q = query(productsRef, where("category", "==", selectedCategory));
-        }
-        const productSnapshot = await getDocs(q);
+        const productSnapshot = await getDocs(productsRef);
         const productList = productSnapshot.docs.map((d) => ({
           id: d.id,
           ...d.data(),
@@ -161,9 +114,9 @@ export default function HomeScreen() {
       }
     };
     fetchProducts();
-  }, [selectedCategory]);
+  }, []); // ✅ Removed selectedCategory from dependency array
 
-  // Add to wishlist - UPDATED TO NEW STRUCTURE
+  // Add to wishlist
   const addToWishlist = async (product) => {
     const user = auth.currentUser;
     if (!user) {
@@ -175,10 +128,7 @@ export default function HomeScreen() {
       });
       return;
     }
-
-    // ✅ NEW STRUCTURE: users/{userId}/wishlist/{productId}
     const ref = doc(db, "users", user.uid, "wishlist", product.id);
-
     try {
       const existing = await getDoc(ref);
       if (!existing.exists()) {
@@ -189,12 +139,10 @@ export default function HomeScreen() {
           imageUrl: product.imageUrl,
           addedAt: serverTimestamp(),
         });
-
         setTempClicked((prev) => ({ ...prev, [product.id]: true }));
         setTimeout(() => {
           setTempClicked((prev) => ({ ...prev, [product.id]: false }));
         }, 1000);
-
         Toast.show({
           type: "success",
           text1: "💖 Added to Wishlist",
@@ -220,7 +168,7 @@ export default function HomeScreen() {
     }
   };
 
-  // Add to cart - UPDATED TO NEW STRUCTURE
+  // Add to cart
   const addToCart = async (product, qty = 1) => {
     try {
       const user = auth.currentUser;
@@ -233,11 +181,8 @@ export default function HomeScreen() {
         });
         return;
       }
-
-      // ✅ NEW STRUCTURE: users/{userId}/cart/{productId}
       const itemRef = doc(db, "users", user.uid, "cart", product.id);
       const snap = await getDoc(itemRef);
-
       if (snap.exists()) {
         await updateDoc(itemRef, {
           quantity: (snap.data().quantity || 1) + qty,
@@ -276,7 +221,6 @@ export default function HomeScreen() {
     }
   };
 
-  // if fonts aren't ready show loader (avoid white blank)
   if (!leagueSpartanLoaded || !montserratLoaded) {
     return (
       <View
@@ -290,185 +234,163 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={{ flex: 1 }}>
-      <ScrollView >
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Mirrora Philippines</Text>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("MessageScreen")}
-          >
-            <Icon name="chat-processing" size={24} color="#A68B69" />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputWrapper}>
-            <Icon
-              name="magnify"
-              size={20}
-              color="#777"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search here..."
-              placeholderTextColor="#777"
-            />
+        <ScrollView>
+          {/* HEADER */}
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Mirrora Philippines</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("MessageScreen")}
+            >
+              <Icon name="chat-processing" size={24} color="#A68B69" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.filterButton}>
-            <Icon name="tune" size={24} color="#000" />
-          </TouchableOpacity>
-        </View>
-
-        {/* BANNERS */}
-        <FlatList
-          data={banners}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id}
-          onScroll={(event) => {
-            const index = Math.round(
-              event.nativeEvent.contentOffset.x /
-                event.nativeEvent.layoutMeasurement.width
-            );
-            setActiveBanner(index);
-          }}
-          style={styles.bannerList}
-          renderItem={({ item }) => {
-            // ★ CHANGED: ensure valid source, else use placeholder
-            const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
-            return (
-              <ImageBackground
-                source={bannerSrc} // ★ CHANGED
-                style={styles.banner}
-                imageStyle={styles.bannerImageStyle}
-                resizeMode="cover"
-              >
-                <View style={styles.bannerContent}>
-                  <Text style={styles.bannerText}>Design Your Perfect</Text>
-                  <Text style={[styles.bannerText, { color: "#fff" }]}>
-                    Mirror Today
-                  </Text>
-                  <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
-                    Crafted Just for You!
-                  </Text>
-                  <TouchableOpacity style={styles.customizeButton}>
-                    <Text style={styles.customizeButtonText}>
-                      Customize Now
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ImageBackground>
-            );
-          }}
-        />
-        <View style={styles.bannerDotsContainer}>
-          {banners.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.dot, activeBanner === index && styles.activeDot]}
-            />
-          ))}
-        </View>
-
-        {/* PRODUCTS */}
-        <View style={styles.sectionHeader}>
-          <TouchableOpacity
-            style={styles.categoryDropdownButton}
-            onPress={() => setDropdownVisible(!isDropdownVisible)}
-          >
-            <Text style={styles.sectionTitle}>{selectedCategory}</Text>
-            <Icon
-              name={isDropdownVisible ? "chevron-up" : "chevron-down"}
-              size={20}
-              color="#000"
-              style={{ marginLeft: 5 }}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate("CategoryScreen", {
-                category: "Most Popular",
-              })
-            }
-          >
-            <Text style={styles.seeAllText}>See All</Text>
-          </TouchableOpacity>
-        </View>
-
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#A68B69" />
-            <Text style={styles.loadingText}>Loading products...</Text>
+          <View style={styles.searchContainer}>
+            <View style={styles.searchInputWrapper}>
+              <Icon
+                name="magnify"
+                size={20}
+                color="#777"
+                style={styles.searchIcon}
+              />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search here..."
+                placeholderTextColor="#777"
+              />
+            </View>
+            <TouchableOpacity style={styles.filterButton}>
+              <Icon name="tune" size={24} color="#000" />
+            </TouchableOpacity>
           </View>
-        ) : (
+
+          {/* BANNERS */}
           <FlatList
-            data={products}
+            data={banners}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
             keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.productRow}
+            onScroll={(event) => {
+              const index = Math.round(
+                event.nativeEvent.contentOffset.x /
+                event.nativeEvent.layoutMeasurement.width
+              );
+              setActiveBanner(index);
+            }}
+            style={styles.bannerList}
             renderItem={({ item }) => {
-              const isTempClicked = tempClicked[item.id];
-              // ★ CHANGED: ensure valid source, else placeholder
-              const productSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
-
+              const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
               return (
-                <TouchableOpacity
-                  style={styles.productCard}
-                  onPress={() =>
-                    navigation.navigate("ProductScreen", {
-                      product: item,
-                      addToCart: addToCart,
-                      addToWishlist: addToWishlist,
-                    })
-                  }
+                <ImageBackground
+                  source={bannerSrc}
+                  style={styles.banner}
+                  imageStyle={styles.bannerImageStyle}
+                  resizeMode="cover"
                 >
-                  <View style={styles.productImageContainer}>
-                    {/* ★ CHANGED: safe image */}
-                    <Image
-                      source={productSrc}
-                      style={styles.productImage}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity
-                      style={styles.heartIcon}
-                      onPress={() => addToWishlist(item)}
-                    >
-                      <Icon
-                        name={isTempClicked ? "heart" : "heart-outline"}
-                        size={20}
-                        color={isTempClicked ? "red" : "#fff"}
-                      />
+                  <View style={styles.bannerContent}>
+                    <Text style={styles.bannerText}>Design Your Perfect</Text>
+                    <Text style={[styles.bannerText, { color: "#fff" }]}>
+                      Mirror Today
+                    </Text>
+                    <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
+                      Crafted Just for You!
+                    </Text>
+                    <TouchableOpacity style={styles.customizeButton}>
+                      <Text style={styles.customizeButtonText}>
+                        Customize Now
+                      </Text>
                     </TouchableOpacity>
                   </View>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{item.name}</Text>
-                    <View style={styles.priceAndButton}>
-                      <Text style={styles.productPrice}>₱ {item.price}</Text>
-                      <TouchableOpacity
-                        style={styles.addToCartButton}
-                        onPress={() => addToCart(item)}
-                      >
-                        <Icon name="plus" size={16} color="#fff" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </TouchableOpacity>
+                </ImageBackground>
               );
             }}
-            scrollEnabled={false}
           />
-        )}
-      </ScrollView>
+          <View style={styles.bannerDotsContainer}>
+            {banners.map((_, index) => (
+              <View
+                key={index}
+                style={[styles.dot, activeBanner === index && styles.activeDot]}
+              />
+            ))}
+          </View>
 
-      {/* Dropdown */}
-      <CategoriesDropdown
-        isVisible={isDropdownVisible}
-        onClose={() => setDropdownVisible(false)}
-        onSelectCategory={setSelectedCategory}
-      />
+          {/* PRODUCTS */}
+          <View style={styles.sectionHeader}>
+            {/* ✅ Replaced the dropdown button with a simple Text component */}
+            <Text style={styles.sectionTitle}>Popular</Text>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate("CategoryScreen", {
+                  category: "Most Popular",
+                })
+              }
+            >
+              <Text style={styles.seeAllText}>See All</Text>
+            </TouchableOpacity>
+          </View>
+
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#A68B69" />
+              <Text style={styles.loadingText}>Loading products...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={products}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              columnWrapperStyle={styles.productRow}
+              renderItem={({ item }) => {
+                const isTempClicked = tempClicked[item.id];
+                const productSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
+                return (
+                  <TouchableOpacity
+                    style={styles.productCard}
+                    onPress={() =>
+                      navigation.navigate("ProductScreen", {
+                        product: item,
+                        addToCart: addToCart,
+                        addToWishlist: addToWishlist,
+                      })
+                    }
+                  >
+                    <View style={styles.productImageContainer}>
+                      <Image
+                        source={productSrc}
+                        style={styles.productImage}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity
+                        style={styles.heartIcon}
+                        onPress={() => addToWishlist(item)}
+                      >
+                        <Icon
+                          name={isTempClicked ? "heart" : "heart-outline"}
+                          size={20}
+                          color={isTempClicked ? "red" : "#fff"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.productInfo}>
+                      <Text style={styles.productName}>{item.name}</Text>
+                      <View style={styles.priceAndButton}>
+                        <Text style={styles.productPrice}>₱ {item.price}</Text>
+                        <TouchableOpacity
+                          style={styles.addToCartButton}
+                          onPress={() => addToCart(item)}
+                        >
+                          <Icon name="plus" size={16} color="#fff" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              scrollEnabled={false}
+            />
+          )}
+        </ScrollView>
       </View>
-      {/* Bottom Nav */}
     </SafeAreaView>
   );
 }
@@ -546,7 +468,6 @@ const styles = StyleSheet.create({
     marginTop: 25,
     marginBottom: 10,
   },
-  categoryDropdownButton: { flexDirection: "row", alignItems: "center" },
   sectionTitle: { fontFamily: "LeagueSpartan_700Bold", fontSize: 20, color: "#000" },
   seeAllText: { fontFamily: "Montserrat_400Regular", color: "#A68B69" },
   productRow: { justifyContent: "space-between", paddingHorizontal: 15, marginBottom: 10 },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { db, auth } from '../Backend/firebaseConfig';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
@@ -9,7 +9,8 @@ const MyOrderScreen = () => {
     const navigation = useNavigation();
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState([]);
-    const [activeTab, setActiveTab] = useState('Pending');
+    // The initial active tab is set to the first status in the new list
+    const [activeTab, setActiveTab] = useState('pending');
 
     useEffect(() => {
         const fetchOrders = () => {
@@ -24,22 +25,24 @@ const MyOrderScreen = () => {
             const userId = user.uid;
             console.log("Fetching orders for user:", userId);
 
+            // This query fetches ALL orders for the user in real-time
             const q = query(
                 collection(db, 'orders'),
                 where('userID', '==', userId),
                 orderBy('createdAt', 'desc')
             );
 
+            // onSnapshot sets up a real-time listener
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 console.log("Query snapshot size:", querySnapshot.size);
-                
+
                 if (querySnapshot.empty) {
                     console.log("No orders found for this user");
                     setOrders([]);
                     setIsLoading(false);
                     return;
                 }
-                
+
                 const fetchedOrders = querySnapshot.docs.map(doc => {
                     const orderData = doc.data();
                     console.log("Order data:", orderData);
@@ -48,7 +51,8 @@ const MyOrderScreen = () => {
                         id: doc.id,
                         createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
                         items: orderData.items || [],
-                        status: orderData.status || 'Unknown',
+                        // This is the key fix: converting the status to lowercase to avoid case-sensitivity issues
+                        status: orderData.status ? orderData.status.toLowerCase() : 'unknown',
                         total: orderData.total || 0,
                         userId: orderData.userID,
                         paymentMethod: orderData.paymentMethod || 'Not specified'
@@ -62,6 +66,7 @@ const MyOrderScreen = () => {
                 console.error("Error fetching orders:", error);
                 setIsLoading(false);
                 Alert.alert("Error", "Failed to fetch orders. Please try again.");
+                return; // Add this line to prevent further processing on error
             });
 
             return unsubscribe;
@@ -95,7 +100,7 @@ const MyOrderScreen = () => {
                         onPress: async () => {
                             const orderRef = doc(db, 'orders', orderId);
                             await updateDoc(orderRef, {
-                                status: 'Cancelled'
+                                status: 'cancelled'
                             });
                             console.log(`Order ${orderId} cancelled successfully`);
                         }
@@ -106,6 +111,38 @@ const MyOrderScreen = () => {
             console.error("Error cancelling order:", error);
             Alert.alert("Error", "Failed to cancel order. Please try again.");
         }
+    };
+    
+    // Function to handle deleting a cancelled order
+    const handleDeleteOrder = async (orderId) => {
+        try {
+            Alert.alert(
+                "Delete Order",
+                "This action is permanent. Are you sure you want to remove this order from your list?",
+                [
+                    {
+                        text: "Cancel",
+                        style: "cancel"
+                    },
+                    {
+                        text: "Delete",
+                        onPress: async () => {
+                            const orderRef = doc(db, 'orders', orderId);
+                            await deleteDoc(orderRef);
+                            console.log(`Order ${orderId} deleted successfully`);
+                        }
+                    }
+                ]
+            );
+        } catch (error) {
+            console.error("Error deleting order:", error);
+            Alert.alert("Error", "Failed to delete order. Please try again.");
+        }
+    };
+    
+    // New function to handle the review button press
+    const handleReview = (orderId, item) => {
+        navigation.navigate('ReviewScreen', { orderId, item });
     };
 
     const formatDate = (date) => {
@@ -121,11 +158,12 @@ const MyOrderScreen = () => {
 
     const getStatusColor = (status) => {
         switch (status) {
-            case 'Pending': return '#ff9800';
-            case 'Shipped': return '#2196f3';
-            case 'To Receive': return '#9c27b0';
-            case 'Completed': return '#4caf50';
-            case 'Cancelled': return '#f44336';
+            case 'pending': return '#ff9800';
+            case 'confirmed': return '#2196f3';
+            case 'processing': return '#9c27b0';
+            case 'shipped': return '#4caf50';
+            case 'delivered': return '#4caf50';
+            case 'cancelled': return '#f44336';
             default: return '#757575';
         }
     };
@@ -139,6 +177,7 @@ const MyOrderScreen = () => {
         );
     }
 
+    // This is the line that filters the orders based on the active tab
     const filteredOrders = orders.filter(order => order.status === activeTab);
 
     return (
@@ -155,36 +194,39 @@ const MyOrderScreen = () => {
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
                 <View style={styles.tabs}>
-                    {['Pending', 'Shipped', 'To Receive', 'Completed', 'Cancelled'].map((status) => (
+                    {['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].map((status) => (
                         <TouchableOpacity
                             key={status}
                             style={[styles.tab, activeTab === status && styles.activeTab]}
                             onPress={() => handleTabChange(status)}
                         >
                             <Text style={[styles.tabText, activeTab === status && styles.activeTabText]}>
-                                {status}
+                                {/* Capitalize the first letter for display */}
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
                             </Text>
                         </TouchableOpacity>
                     ))}
                 </View>
             </ScrollView>
 
-            {orders.length === 0 ? (
+            {/* Conditional rendering for displaying orders or a message */}
+            {filteredOrders.length === 0 ? (
                 <View style={styles.noOrdersContainer}>
-                    <Ionicons name="receipt-outline" size={80} color="#ccc" />
-                    <Text style={styles.noOrdersText}>No orders found</Text>
-                    <Text style={styles.noOrdersSubtext}>Start shopping to see your orders here!</Text>
+                    <Ionicons name="document-text-outline" size={80} color="#ccc" />
+                    <Text style={styles.noOrdersText}>No {activeTab.toLowerCase()} orders</Text>
+                    <Text style={styles.noOrdersSubtext}>You don't have any {activeTab.toLowerCase()} orders yet.</Text>
                 </View>
-            ) : filteredOrders.length > 0 ? (
-                filteredOrders.map((order, index) => (
-                    <View key={index} style={styles.orderCard}>
+            ) : (
+                filteredOrders.map((order) => (
+                    <View key={order.id} style={styles.orderCard}>
                         <View style={styles.orderHeader}>
                             <View style={styles.orderHeaderLeft}>
                                 <Text style={styles.orderId}>Order #{order.id.substring(0, 8)}</Text>
                                 <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
                             </View>
                             <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
-                                {order.status}
+                                {/* Capitalize the first letter for display */}
+                                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                             </Text>
                         </View>
                         
@@ -206,11 +248,12 @@ const MyOrderScreen = () => {
                         
                         <View style={styles.orderFooter}>
                             <View style={styles.totalContainer}>
-                                <Text style={styles.totalLabel}>Total Amount:</Text>
-                                <Text style={styles.totalText}>₱{order.total.toLocaleString()}</Text>
+                                <Text style={styles.totalLabel}>Amount Paid (50%):</Text>
+                                <Text style={styles.totalText}>₱{(order.total * 0.5).toLocaleString()}</Text>
                             </View>
                             
-                            {order.status === 'Pending' && (
+                            {/* Conditional rendering for buttons */}
+                            {order.status === 'pending' && (
                                 <TouchableOpacity 
                                     onPress={() => handleCancelOrder(order.id)} 
                                     style={styles.cancelButton}
@@ -218,20 +261,35 @@ const MyOrderScreen = () => {
                                     <Text style={styles.cancelButtonText}>Cancel Order</Text>
                                 </TouchableOpacity>
                             )}
+                            
+                            {/* New button for writing a review */}
+                            {order.status === 'delivered' && (
+                                <TouchableOpacity 
+                                    onPress={() => handleReview(order.id, order.items[0])} 
+                                    style={styles.reviewButton}
+                                >
+                                    <Text style={styles.reviewButtonText}>Write a Review</Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {/* New button to delete cancelled orders */}
+                            {order.status === 'cancelled' && (
+                                <TouchableOpacity 
+                                    onPress={() => handleDeleteOrder(order.id)} 
+                                    style={[styles.cancelButton, styles.deleteButton]}
+                                >
+                                    <Text style={styles.cancelButtonText}>Remove Order</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                     </View>
                 ))
-            ) : (
-                <View style={styles.noOrdersContainer}>
-                    <Ionicons name="document-text-outline" size={80} color="#ccc" />
-                    <Text style={styles.noOrdersText}>No {activeTab.toLowerCase()} orders</Text>
-                    <Text style={styles.noOrdersSubtext}>You don't have any {activeTab.toLowerCase()} orders yet.</Text>
-                </View>
             )}
         </ScrollView>
     );
 };
 
+// The styles remain the same
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -410,6 +468,23 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    deleteButton: {
+        backgroundColor: '#d32f2f', // A darker red for deletion
+        marginTop: 10,
+    },
+    reviewButton: {
+        backgroundColor: '#A68B69',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 10,
+    },
+    reviewButtonText: {
         color: '#fff',
         fontWeight: 'bold',
         fontSize: 16,
