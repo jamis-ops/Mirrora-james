@@ -1,284 +1,454 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, FlatList, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
-import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  ScrollView,
+  Alert,
+} from 'react-native';
 
-const dummyMessages = [
-    { id: '1', sender: 'chatbot', text: 'Hi! Welcome to Mirrora. How can I help you today?', avatar: require('../assets/chatbot-avatar.png'), time: '9:00 AM', date: 'July 2025' },
-    { id: '2', sender: 'user', text: 'Do you have onsite workshop?', time: '9:01 AM' },
-    { id: '3', sender: 'chatbot', text: 'Yes, we are located in Brgy. Bulacao, Cebu City, Philippines. You may visit us to check our mirrors in person or inquire about custom orders.', avatar: require('../assets/chatbot-avatar.png'), time: '9:02 AM' },
-    { id: '4', sender: 'user', text: 'Thank you.', time: '9:03 AM' },
-    { id: '5', sender: 'chatbot', text: 'You\'re welcome! Do you need help with anything else?', avatar: require('../assets/chatbot-avatar.png'), time: '9:04 AM' },
-];
+// Simple ChatbotScreen without external dependencies
+export default function ChatbotScreen({ navigation }) {
+  const [messages, setMessages] = useState([]);
+  const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isBotTyping, setIsBotTyping] = useState(false);
+  const flatListRef = useRef(null);
 
-const quickReplies = [
+  // Gemini API configuration
+  const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || "AIzaSyAJaYkB3G69TzOWQ66bwVMmlQHR5ug3Jt0";
+  const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+
+  // Quick reply options
+  const quickReplies = [
     'Do you have onsite workshop?',
     'How much is the delivery fee?',
     'Do you offer same-day delivery?',
     'How do I track my order?',
     'What payment methods are accepted?'
-];
+  ];
 
-const ChatMessage = ({ item }) => {
+  useEffect(() => {
+    initializeChat();
+  }, []);
+
+  const initializeChat = () => {
+    const welcomeMessage = {
+      id: 1,
+      text: "Hi! Welcome to Mirrora. How can I help you today?",
+      sender: 'chatbot',
+      timestamp: new Date(),
+      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    };
+    setMessages([welcomeMessage]);
+  };
+
+  // Call Gemini AI
+  const callGeminiAI = async (userMessage) => {
+    try {
+      if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('your_api_key')) {
+        return "I'm having trouble connecting to my AI service. Please make sure your API key is set up correctly. You can visit our workshop at Brgy. Bulacao, Cebu City for immediate assistance!";
+      }
+
+      let aiResponseText = "";
+      if (userMessage.toLowerCase().includes('payment methods') || userMessage.toLowerCase().includes('payment')) {
+        aiResponseText = "Mirrora PH only accepts bank transfer for a 50% downpayment. The remaining 50% is due upon delivery of the product or item.";
+      } else if (userMessage.toLowerCase().includes('track my order') || userMessage.toLowerCase().includes('order status')) {
+        aiResponseText = "You can track your order on the 'My Order' screen, where you can see the current status of your order.";
+      } else if (userMessage.toLowerCase().includes('delivery fee')) {
+        aiResponseText = "The delivery fee depends on your specific location.";
+      } else {
+        const systemPrompt = `You are a helpful customer service assistant for "Mirrora" - a mirror company in Brgy. Bulacao, Cebu City, Philippines.
+
+        Key Information:
+        - Location: Brgy. Bulacao, Cebu City, Philippines
+        - Services: Custom mirrors, decorative mirrors, delivery, installation
+        - Payment: Cash, bank transfer, GCash, PayPal
+        - Delivery: Available in Cebu City, fees ₱150-₱300
+        - Same-day delivery: Available for in-stock items
+        - Return policy: 7 days for defective items
+        - Workshop visits: Welcome for viewing mirrors and custom orders
+        
+        Be helpful, friendly, and keep responses under 100 words.
+        
+        User question: ${userMessage}`;
+        
+        const response = await fetch(GEMINI_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: systemPrompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.95,
+              maxOutputTokens: 150,
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        aiResponseText = data.candidates[0].content.parts[0].text;
+      }
+
+      return aiResponseText;
+    } catch (error) {
+      console.error('AI Error:', error);
+      return "I'm having trouble right now. You can visit our workshop at Brgy. Bulacao, Cebu City for immediate assistance. What specific question do you have about our mirrors?";
+    }
+  };
+
+  const sendMessage = async (messageText = null) => {
+    const textToSend = messageText || inputText;
+    if (!textToSend.trim()) return;
+
+    try {
+      setLoading(true);
+      setIsBotTyping(true);
+
+      // Add user message
+      const userMessage = {
+        id: Date.now(),
+        text: textToSend,
+        sender: 'user',
+        timestamp: new Date(),
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+      if (!messageText) setInputText('');
+
+      // Get AI response
+      const aiResponse = await callGeminiAI(textToSend);
+      
+      const botMessage = {
+        id: Date.now() + 1,
+        text: aiResponse,
+        sender: 'chatbot',
+        timestamp: new Date(),
+        time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setMessages(prev => [...prev, botMessage]);
+
+    } catch (error) {
+      console.error('Send Error:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
+    } finally {
+      setLoading(false);
+      setIsBotTyping(false);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  };
+
+  const handleQuickReply = (text) => {
+    sendMessage(text);
+  };
+
+  const renderMessage = ({ item }) => {
     const isUser = item.sender === 'user';
     return (
-        <View style={[styles.chatMessageContainer, isUser ? styles.userMessageContainer : styles.chatbotMessageContainer]}>
-            {!isUser && item.avatar && <Image source={item.avatar} style={styles.chatMessageAvatar} />}
-            <View style={[isUser ? styles.userMessageBubble : styles.chatbotMessageBubble, styles.shadow]}>
-                <Text style={isUser ? styles.userMessageText : styles.chatbotMessageText}>{item.text}</Text>
-            </View>
+      <View style={[styles.messageContainer, isUser ? styles.userMessage : styles.botMessage]}>
+        {!isUser && (
+          <View style={styles.avatarContainer}>
+            <Text style={styles.avatarText}>🤖</Text>
+          </View>
+        )}
+        <View style={[
+          styles.messageBubble,
+          isUser ? styles.userMessageBubble : styles.botMessageBubble
+        ]}>
+          <Text style={[
+            styles.messageText,
+            isUser ? styles.userMessageText : styles.botMessageText
+          ]}>
+            {item.text}
+          </Text>
         </View>
+      </View>
     );
-};
+  };
 
-export default function ChatbotScreen({ onGoBack }) {
-    const [inputMessage, setInputMessage] = useState('');
-    const [messages, setMessages] = useState(dummyMessages);
-    const flatListRef = useRef(null);
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Mirrora Chat</Text>
+          <Text style={styles.headerSubtitle}>Online</Text>
+        </View>
+        <View style={{ width: 60 }} />
+      </View>
 
-    const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
-    const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
- 
-    if (!leagueSpartanLoaded || !montserratLoaded) {
-      return null;
-    }
+      {/* Main Content */}
+      <View style={styles.mainContent}>
+        <View style={styles.chatHeader}>
+          <Text style={styles.chatHeaderTitle}>Hello!</Text>
+          <Text style={styles.chatHeaderSubtitle}>How can I help?</Text>
+        </View>
 
-    const handleSendMessage = () => {
-        if (inputMessage.trim() === '') return;
-        const newMessage = { id: Date.now().toString(), sender: 'user', text: inputMessage, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
-        setMessages([...messages, newMessage]);
-        setInputMessage('');
-        flatListRef.current.scrollToEnd({ animated: true });
-    };
-
-    const handleQuickReply = (text) => {
-        setInputMessage(text);
-        flatListRef.current.scrollToEnd({ animated: true });
-    };
-
-    const renderItem = ({ item }) => {
-        const isUser = item.sender === 'user';
-        return (
-            <View>
-                {item.date && <Text style={styles.dateSeparator}>{item.date}</Text>}
-                <View style={[styles.chatMessageContainer, isUser ? styles.userMessageContainer : styles.chatbotMessageContainer]}>
-                    {!isUser && item.avatar && <Image source={item.avatar} style={styles.chatMessageAvatar} />}
-                    <View style={[isUser ? styles.userMessageBubble : styles.chatbotMessageBubble, styles.shadow]}>
-                        <Text style={isUser ? styles.userMessageText : styles.chatbotMessageText}>{item.text}</Text>
-                    </View>
+        {/* Messages */}
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={item => item.id.toString()}
+            renderItem={renderMessage}
+            contentContainerStyle={styles.messagesContent}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            ListFooterComponent={() => (
+              isBotTyping && (
+                <View style={styles.typingContainer}>
+                  <View style={styles.avatarContainer}>
+                    <Text style={styles.avatarText}>🤖</Text>
+                  </View>
+                  <View style={styles.typingBubble}>
+                    <ActivityIndicator size="small" color="#A68B69" />
+                    <Text style={styles.typingText}>Typing...</Text>
+                  </View>
                 </View>
-            </View>
-        );
-    };
+              )
+            )}
+          />
+        </View>
 
-    return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-        >
-            <View style={styles.header}>
-                <TouchableOpacity onPress={onGoBack} style={styles.backButton}>
-                    <Icon name="chevron-left" size={30} color="#fff" />
-                </TouchableOpacity>
-                <View style={styles.headerTitleContainer}>
-                    <Text style={styles.headerTitle}>Chatbot</Text>
-                    <Text style={styles.headerSubtitle}>Online</Text>
-                </View>
-                <View style={{ width: 30 }} />
-            </View>
-            <View style={styles.mainContent}>
-                <View style={styles.chatHeader}>
-                    <Text style={styles.chatHeaderTitle}>Hello, Aubrie</Text>
-                    <Text style={styles.chatHeaderSubtitle}>How can I help?</Text>
-                </View>
-                <View style={{flex: 1}}>
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        keyExtractor={item => item.id}
-                        renderItem={renderItem}
-                        contentContainerStyle={styles.flatListContent}
-                        onContentSizeChange={() => flatListRef.current.scrollToEnd({ animated: true })}
-                    />
-                </View>
-                <View style={styles.quickRepliesAndInputContainer}>
-                    <ScrollView style={styles.quickRepliesContainer} horizontal showsHorizontalScrollIndicator={false}>
-                        {quickReplies.map((reply, index) => (
-                            <TouchableOpacity key={index} style={styles.quickReplyButton} onPress={() => handleQuickReply(reply)}>
-                                <Text style={styles.quickReplyText}>{reply}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={styles.messageInput}
-                            placeholder="Write Message"
-                            placeholderTextColor="#999"
-                            value={inputMessage}
-                            onChangeText={setInputMessage}
-                        />
-                        <TouchableOpacity onPress={handleSendMessage} style={styles.sendButton}>
-                            <Icon name="send" size={24} color="#A68B69" />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
-        </KeyboardAvoidingView>
-    );
+        {/* Quick Replies and Input */}
+        <View style={styles.bottomContainer}>
+          <ScrollView 
+            style={styles.quickRepliesContainer} 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+          >
+            {quickReplies.map((reply, index) => (
+              <TouchableOpacity 
+                key={index} 
+                style={styles.quickReplyButton} 
+                onPress={() => handleQuickReply(reply)}
+              >
+                <Text style={styles.quickReplyText}>{reply}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Write Message"
+              placeholderTextColor="#999"
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={() => sendMessage()}
+            />
+            <TouchableOpacity 
+              onPress={() => sendMessage()} 
+              disabled={loading || !inputText.trim()}
+              style={[styles.sendButton, (!inputText.trim() || loading) && styles.sendButtonDisabled]}
+            >
+              <Text style={styles.sendButtonText}>
+                {loading ? '...' : 'Send'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#A68B69',
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingTop: 50,
-        paddingBottom: 15,
-    },
-    backButton: {
-        padding: 5,
-    },
-    headerTitleContainer: {
-        alignItems: 'center',
-    },
-    headerTitle: {
-        fontFamily: 'LeagueSpartan_700Bold',
-        fontSize: 24,
-        color: '#fff',
-    },
-    headerSubtitle: {
-        fontFamily: 'Montserrat_400Regular',
-        fontSize: 12,
-        color: '#fff',
-    },
-    mainContent: {
-        flex: 1,
-        backgroundColor: '#fff',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        marginTop: 10,
-    },
-    chatHeader: {
-        paddingVertical: 20,
-        paddingHorizontal: 20,
-        alignItems: 'center',
-        marginBottom: 10,
-    },
-    chatHeaderTitle: {
-        fontFamily: 'LeagueSpartan_700Bold',
-        fontSize: 28,
-        color: '#000',
-    },
-    chatHeaderSubtitle: {
-        fontFamily: 'Montserrat_600SemiBold',
-        fontSize: 20,
-        color: '#000',
-    },
-    quickRepliesAndInputContainer: {
-        backgroundColor: '#fff',
-    },
-    quickRepliesContainer: {
-        flexDirection: 'row',
-        paddingHorizontal: 15,
-        marginBottom: 10,
-        paddingBottom: 10,
-    },
-    quickReplyButton: {
-        backgroundColor: '#E8E8E8',
-        borderRadius: 20,
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        marginHorizontal: 5,
-    },
-    quickReplyText: {
-        fontFamily: 'Montserrat_400Regular',
-        fontSize: 12,
-        color: '#000',
-    },
-    flatListContent: {
-        paddingHorizontal: 20,
-        paddingBottom: 20,
-    },
-    chatMessageContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginBottom: 15,
-    },
-    chatbotMessageContainer: {
-        justifyContent: 'flex-start',
-    },
-    userMessageContainer: {
-        justifyContent: 'flex-end',
-        flexDirection: 'row',
-    },
-    chatMessageAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        marginRight: 10,
-    },
-    chatbotMessageBubble: {
-        backgroundColor: '#F3F4F6',
-        borderRadius: 15,
-        padding: 15,
-        maxWidth: '80%',
-    },
-    userMessageBubble: {
-        backgroundColor: '#A68B69',
-        borderRadius: 15,
-        padding: 15,
-        maxWidth: '80%',
-    },
-    chatbotMessageText: {
-        fontFamily: 'Montserrat_400Regular',
-        fontSize: 14,
-        lineHeight: 20,
-        color: '#000',
-    },
-    userMessageText: {
-        fontFamily: 'Montserrat_400Regular',
-        fontSize: 14,
-        lineHeight: 20,
-        color: '#fff',
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 10,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-    },
-    messageInput: {
-        flex: 1,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 25,
-        height: 50,
-        paddingHorizontal: 20,
-        fontFamily: 'Montserrat_400Regular',
-    },
-    sendButton: {
-        marginLeft: 10,
-    },
-    shadow: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-        elevation: 2,
-    },
-    dateSeparator: {
-        fontFamily: 'Montserrat_400Regular',
-        fontSize: 12,
-        color: '#777',
-        textAlign: 'center',
-        marginVertical: 10,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#A68B69',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 15,
+  },
+  backButton: {
+    padding: 5,
+  },
+  backText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  headerTitleContainer: {
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#fff',
+  },
+  mainContent: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    marginTop: 10,
+  },
+  chatHeader: {
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  chatHeaderTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  chatHeaderSubtitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#000',
+  },
+  messagesContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 15,
+  },
+  botMessage: {
+    justifyContent: 'flex-start',
+  },
+  userMessage: {
+    justifyContent: 'flex-end',
+    flexDirection: 'row',
+  },
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+    backgroundColor: '#A68B69',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 20,
+  },
+  messageBubble: {
+    borderRadius: 15,
+    padding: 15,
+    maxWidth: '80%',
+  },
+  botMessageBubble: {
+    backgroundColor: '#F3F4F6',
+  },
+  userMessageBubble: {
+    backgroundColor: '#A68B69',
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  botMessageText: {
+    color: '#000',
+  },
+  userMessageText: {
+    color: '#fff',
+  },
+  typingContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 15,
+  },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 15,
+    padding: 15,
+  },
+  typingText: {
+    marginLeft: 8,
+    color: '#A68B69',
+    fontSize: 14,
+  },
+  bottomContainer: {
+    backgroundColor: '#fff',
+  },
+  quickRepliesContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    paddingBottom: 10,
+  },
+  quickReplyButton: {
+    backgroundColor: '#E8E8E8',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginHorizontal: 5,
+  },
+  quickReplyText: {
+    fontSize: 12,
+    color: '#000',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  messageInput: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 25,
+    height: 50,
+    paddingHorizontal: 20,
+    fontSize: 14,
+  },
+  sendButton: {
+    marginLeft: 10,
+    backgroundColor: '#A68B69',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
 });

@@ -7,7 +7,6 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -18,60 +17,56 @@ import Toast from "react-native-toast-message";
 import {
   getDoc,
   doc,
+  deleteDoc,
   setDoc,
   updateDoc,
   increment,
-  deleteDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
-// Font imports
+// Font imports from your HomeScreen
 import {
-  useFonts,
+  useFonts as useLeagueSpartan,
   LeagueSpartan_700Bold,
 } from "@expo-google-fonts/league-spartan";
 import {
+  useFonts as useMontserrat,
   Montserrat_400Regular,
   Montserrat_600SemiBold,
 } from "@expo-google-fonts/montserrat";
 
-const { width } = Dimensions.get("window");
-
 export default function ProductScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { product } = route.params;
+  const { product, addToWishlist } = route.params;
 
   const [isWishlisted, setIsWishlisted] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
 
-  // Load all fonts at once
-  const [fontsLoaded] = useFonts({
-    LeagueSpartan_700Bold,
+  // Load fonts
+  const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
+  const [montserratLoaded] = useMontserrat({
     Montserrat_400Regular,
     Montserrat_600SemiBold,
   });
 
-  // Check if the item is already in the wishlist on component mount
+  // ✅ Check if the item is already in the wishlist when the screen loads
   useEffect(() => {
     const checkWishlistStatus = async () => {
       const user = auth.currentUser;
-      if (!user) {
-        return;
-      }
-      try {
-        const docRef = doc(db, "users", user.uid, "wishlist", product.id);
-        const docSnap = await getDoc(docRef);
-        setIsWishlisted(docSnap.exists());
-      } catch (error) {
-        console.error("Error checking wishlist status:", error);
+      if (!user) return;
+      const docRef = doc(db, "wishlists", user.uid, "items", product.id);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        setIsWishlisted(true);
+      } else {
+        setIsWishlisted(false);
       }
     };
+
     checkWishlistStatus();
   }, [product.id]);
 
-  // Handle adding to cart - FIXED
+  // ✅ Add product to cart in Firestore
   const handleAddToCart = async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -79,7 +74,6 @@ export default function ProductScreen() {
         type: "error",
         text1: "Login Required",
         text2: "Please sign in to add items to your cart.",
-        position: "top",
       });
       return;
     }
@@ -89,44 +83,38 @@ export default function ProductScreen() {
       const cartSnap = await getDoc(cartRef);
 
       if (cartSnap.exists()) {
+        // If product already in cart → increment quantity
         await updateDoc(cartRef, {
           quantity: increment(1),
         });
-        Toast.show({
-          type: "info",
-          text1: "Cart Updated",
-          text2: `${product.name} quantity increased.`,
-          position: "top",
-        });
       } else {
+        // Add new product to cart
         await setDoc(cartRef, {
-          productId: product.id,
           name: product.name,
           price: product.price,
           imageUrl: product.imageUrl,
           description: product.description || "",
           quantity: 1,
-          addedAt: serverTimestamp(),
-        });
-        Toast.show({
-          type: "success",
-          text1: "Added to Cart",
-          text2: `${product.name} has been added to your cart.`,
-          position: "top",
+          createdAt: new Date(),
         });
       }
+
+      Toast.show({
+        type: "success",
+        text1: "Added to Cart",
+        text2: `${product.name} has been added to your cart.`,
+      });
     } catch (error) {
       console.error("❌ Error adding to cart:", error);
       Toast.show({
         type: "error",
         text1: "Error",
         text2: "Failed to add item. Please try again.",
-        position: "top",
       });
     }
   };
 
-  // Fixed: handle toggling the wishlist status
+  // ✅ Wishlist toggle handler
   const handleWishlistToggle = async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -134,143 +122,114 @@ export default function ProductScreen() {
         type: "error",
         text1: "Login Required",
         text2: "Please sign in to manage your wishlist.",
-        position: "top",
       });
       return;
     }
 
-    try {
-      const wishlistRef = doc(db, "users", user.uid, "wishlist", product.id);
-      if (isWishlisted) {
-        await deleteDoc(wishlistRef);
-        setIsWishlisted(false);
+    const newWishlistedStatus = !isWishlisted;
+    setIsWishlisted(newWishlistedStatus);
+
+    if (newWishlistedStatus) {
+      await addToWishlist(product);
+    } else {
+      try {
+        await deleteDoc(doc(db, "wishlists", user.uid, "items", product.id));
         Toast.show({
           type: "info",
           text1: "Removed from Wishlist",
           text2: "The item has been removed from your list.",
-          position: "top",
         });
-      } else {
-        // FIXED: Explicitly check for 'price' and set a default if it's missing to prevent Firebase errors.
-        const productData = {
-          ...product,
-          price: product.price || 0, // Ensure price is a number, not undefined
-          addedAt: serverTimestamp(),
-        };
-        await setDoc(wishlistRef, productData);
-        setIsWishlisted(true);
+      } catch (error) {
+        console.error("Error removing from wishlist:", error);
         Toast.show({
-          type: "success",
-          text1: "Added to Wishlist",
-          text2: `${product.name} has been added to your wishlist.`,
-          position: "top",
+          type: "error",
+          text1: "Error",
+          text2: "Failed to remove item. Please try again.",
         });
+        setIsWishlisted(true);
       }
-    } catch (error) {
-      console.error("Error toggling wishlist:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "Failed to update wishlist. Please try again.",
-        position: "top",
-      });
     }
   };
 
-  if (!fontsLoaded) {
+  // Handle Customize button press
+  const handleCustomizePress = () => {
+    navigation.navigate("CustomizationScreen", { product });
+  };
+
+  if (!leagueSpartanLoaded || !montserratLoaded) {
     return null;
   }
 
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Enhanced Image Container with Overlay */}
+        {/* Product Image container with the back button */}
         <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: product.imageUrl }} 
-            style={styles.productImage}
-            onLoad={() => setImageLoaded(true)}
-          />
-          
-          {/* Dark overlay for better header visibility */}
-          <View style={styles.darkOverlay} />
-          
-          {/* Enhanced Header */}
+          <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-              <Icon name="chevron-left" size={28} color="#fff" />
-            </TouchableOpacity>
-            
-            {/* FIXED: Navigate to WishlistScreen */}
-            <TouchableOpacity onPress={() => navigation.navigate("WishlistScreen")} style={styles.headerButton}>
-              <Ionicons name="heart-outline" size={26} color="#fff" />
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <Icon name="chevron-left" size={30} color="#000" />
             </TouchableOpacity>
           </View>
-
-          {/* Floating wishlist button */}
-          <TouchableOpacity style={styles.floatingWishlistButton} onPress={handleWishlistToggle}>
-            <Ionicons
-              name={isWishlisted ? "heart" : "heart-outline"}
-              size={24}
-              color={isWishlisted ? "#FF6B6B" : "#666"}
-            />
-          </TouchableOpacity>
         </View>
 
-        {/* Enhanced Details Container */}
+        {/* Product Details Section */}
         <View style={styles.detailsContainer}>
-          <View style={styles.titleSection}>
-            <Text style={styles.productName}>{product.name}</Text>
-            <Text style={styles.productPrice}>₱ {product.price}</Text>
-          </View>
+          <Text style={styles.productName}>{product.name}</Text>
+          <Text style={styles.productPrice}>₱ {product.price}</Text>
 
-          <TouchableOpacity style={styles.customizeButton}>
-            <Icon name="palette-outline" size={16} color="#A68B69" />
+          {/* Customization link */}
+          <TouchableOpacity style={styles.customizeLink} onPress={handleCustomizePress}>
             <Text style={styles.customizeText}>Customize</Text>
           </TouchableOpacity>
 
-          <View style={styles.descriptionCard}>
-            <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.productDescription}>
-              {product.description ||
-                "Floor standing mirrors are not only convenient for you to appreciate your whole body, but also can decorate your space."}
+          {/* Description */}
+          <Text style={styles.productDescription}>
+            {product.description ||
+              "Floor standing mirrors are not only convenient for you to appreciate your whole body, but also can decorate your space."}
+          </Text>
+
+          <View style={styles.divider} />
+
+          {/* Dimensions */}
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Measures (H/W):</Text>
+            <Text style={styles.infoValue}>
+              {product.dimensions || "60.2” x 51.2”"}
             </Text>
           </View>
 
-          {/* Enhanced Info Cards */}
-          <View style={styles.infoCardsContainer}>
-            <View style={styles.infoCard}>
-              <Icon name="ruler" size={20} color="#A68B69" />
-              <Text style={styles.infoLabel}>Dimensions</Text>
-              <Text style={styles.infoValue}>
-                {product.dimensions || '60.2" x 51.2"'}
-              </Text>
-            </View>
+          <View style={styles.divider} />
 
-            <View style={styles.infoCard}>
-              <Icon name="weight" size={20} color="#A68B69" />
-              <Text style={styles.infoLabel}>Weight</Text>
-              <Text style={styles.infoValue}>
-                {product.weight || "20.2 lbs"}
-              </Text>
-            </View>
+          {/* Weight */}
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Weight</Text>
+            <Text style={styles.infoValue}>
+              {product.weight || "20.2 pound"}
+            </Text>
           </View>
         </View>
       </ScrollView>
 
-      {/* Enhanced Bottom Bar */}
+      {/* Bottom Action Bar */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.favoriteButton} onPress={handleWishlistToggle}>
+        <TouchableOpacity
+          style={styles.favoriteButton}
+          onPress={handleWishlistToggle}
+        >
           <Ionicons
             name={isWishlisted ? "heart" : "heart-outline"}
-            size={26}
-            color={isWishlisted ? "#FF6B6B" : "#A68B69"}
+            size={28}
+            color={isWishlisted ? "red" : "#A68B69"}
           />
         </TouchableOpacity>
-        
-        {/* FIXED: Navigate to CartScreen */}
-        <TouchableOpacity style={styles.addToCartButton} onPress={() => navigation.navigate("CartScreen")}>
-          <Icon name="cart-plus" size={20} color="#fff" style={styles.cartIcon} />
+        <TouchableOpacity
+          style={styles.addToCartButton}
+          onPress={handleAddToCart}
+        >
           <Text style={styles.addToCartText}>Add to Cart</Text>
         </TouchableOpacity>
       </View>
@@ -279,194 +238,88 @@ export default function ProductScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: "#FAFAFA" 
-  },
-  imageContainer: { 
-    position: "relative",
-    height: 460,
-  },
-  darkOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 120,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    zIndex: 1,
-  },
+  container: { flex: 1, backgroundColor: "#FFF7EC" },
+  imageContainer: { position: "relative" },
   header: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 15,
     paddingTop: 50,
-    zIndex: 2,
   },
-  headerButton: { 
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  floatingWishlistButton: {
-    position: "absolute",
-    bottom: 20,
-    right: 20,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(255,255,255,0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  productImage: { 
-    width: "100%", 
-    height: "100%", 
-    resizeMode: "cover" 
-  },
-  detailsContainer: { 
-    paddingHorizontal: 24, 
-    paddingTop: 24,
-    paddingBottom: 20,
-  },
-  titleSection: {
-    marginBottom: 16,
-  },
-  productName: { 
-    fontFamily: "LeagueSpartan_700Bold", 
-    fontSize: 28,
-    color: "#1A1A1A",
-    marginBottom: 8,
-  },
+  backButton: { padding: 5 },
+  productImage: { width: "100%", height: 450, resizeMode: "cover" },
+  detailsContainer: { paddingHorizontal: 20, paddingVertical: 15 },
+  productName: { fontFamily: "LeagueSpartan_700Bold", fontSize: 24 },
   productPrice: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 24,
-    color: "#A68B69",
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 18,
+    color: "#000",
+    marginTop: 5,
   },
-  customizeButton: { 
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: "rgba(166, 139, 105, 0.1)",
-    borderRadius: 20,
-    marginBottom: 24,
-  },
+  customizeLink: { marginTop: 2, marginBottom: 15 },
   customizeText: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 14,
+    fontSize: 12,
     color: "#A68B69",
-    marginLeft: 6,
-  },
-  descriptionCard: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 16,
-    color: "#1A1A1A",
-    marginBottom: 12,
+    textDecorationLine: "underline",
   },
   productDescription: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 15,
-    color: "#666",
-    lineHeight: 22,
+    fontSize: 14,
+    color: "#555",
+    lineHeight: 20,
+    marginTop: 5,
   },
-  infoCardsContainer: {
+  divider: {
+    borderBottomColor: "#E0E0E0",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginVertical: 15,
+  },
+  infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
-  },
-  infoCard: {
-    flex: 1,
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    marginTop: 5,
   },
   infoLabel: {
     fontFamily: "Montserrat_400Regular",
-    fontSize: 12,
-    color: "#666",
-    marginTop: 8,
-    marginBottom: 4,
+    fontSize: 14,
+    color: "#555",
   },
   infoValue: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
-    color: "#1A1A1A",
-    textAlign: "center",
+    color: "#000",
   },
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    backgroundColor: "#fff",
+    padding: 20,
     borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 8,
+    borderTopColor: "#f0f0f0",
   },
   favoriteButton: {
-    width: 56,
-    height: 56,
+    width: 50,
+    height: 50,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 28,
-    backgroundColor: "#F8F8F8",
+    borderRadius: 25,
     borderWidth: 1,
-    borderColor: "#E8E8E8",
+    borderColor: "#ccc",
   },
   addToCartButton: {
     flex: 1,
-    flexDirection: "row",
     backgroundColor: "#A68B69",
-    height: 56,
-    borderRadius: 28,
-    marginLeft: 16,
+    height: 50,
+    borderRadius: 25,
+    marginLeft: 15,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#A68B69",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  cartIcon: {
-    marginRight: 8,
   },
   addToCartText: {
     fontFamily: "Montserrat_600SemiBold",

@@ -12,6 +12,7 @@ import CreateAccountScreen from "../screens/CreateAccountScreen";
 import CompleteProfileScreen from "../screens/CompleteProfileScreen";
 import ProductScreen from "../screens/ProductScreen";
 import MessageScreen from "../screens/MessageScreen";
+import ChatScreen from "../screens/ChatScreen"; // New chat screen
 import HelpAndSupportScreen from "../screens/HelpAndSupportScreen";
 import CustomizationScreen from "../screens/CustomizationScreen";
 import ProductListScreen from "../screens/ProductListScreen";
@@ -24,14 +25,15 @@ import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
+
 const Stack = createNativeStackNavigator();
 
-// Toast config
+// Toast config with Mirrora colors
 const toastConfig = {
   success: (props) => (
     <BaseToast
       {...props}
-      style={[styles.toastContainer, { borderLeftColor: "#4CAF50" }]}
+      style={[styles.toastContainer, { borderLeftColor: "#A67B5B" }]}
       text1Style={styles.toastTitle}
       text2Style={styles.toastMessage}
     />
@@ -39,7 +41,7 @@ const toastConfig = {
   error: (props) => (
     <BaseToast
       {...props}
-      style={[styles.toastContainer, { borderLeftColor: "#F44336" }]}
+      style={[styles.toastContainer, { borderLeftColor: "#DC2626" }]}
       text1Style={styles.toastTitle}
       text2Style={styles.toastMessage}
     />
@@ -47,7 +49,7 @@ const toastConfig = {
   info: (props) => (
     <BaseToast
       {...props}
-      style={[styles.toastContainer, { borderLeftColor: "#2196F3" }]}
+      style={[styles.toastContainer, { borderLeftColor: "#8B5E3C" }]}
       text1Style={styles.toastTitle}
       text2Style={styles.toastMessage}
     />
@@ -57,29 +59,40 @@ const toastConfig = {
 export default function StackNavigator() {
   return (
     <>
-      <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        initialRouteName="Splash" 
+        screenOptions={{ headerShown: false }}
+      >
+        {/* Authentication Screens */}
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="SignIn" component={SignInScreen} />
         <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
         <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
 
-        {/* Use TabNavigator instead of HomeScreen directly */}
+        {/* Main App Screens */}
         <Stack.Screen name="Home" component={TabNavigator} />
-
-        {/* Other stack screens */}
+        
+        {/* Product Related Screens */}
         <Stack.Screen name="ProductScreen" component={ProductScreen} />
-        <Stack.Screen name="MessageScreen" component={MessageScreen} />
-        <Stack.Screen name="HelpAndSupportScreen" component={HelpAndSupportScreen} />
-        <Stack.Screen name="CustomizationScreen" component={CustomizationScreen} />
         <Stack.Screen name="ProductListScreen" component={ProductListScreen} />
-        <Stack.Screen name="ChatbotScreen" component={ChatbotScreen} />
+        <Stack.Screen name="CustomizationScreen" component={CustomizationScreen} />
+        
+        {/* Order Related Screens */}
         <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
         <Stack.Screen name="OrderConfirmationScreen" component={OrderConfirmationScreen} />
         <Stack.Screen name="MyOrderScreen" component={MyOrderScreen} />
+        
+        {/* Message/Chat Related Screens */}
+        <Stack.Screen name="MessageScreen" component={MessageScreen} />
+        <Stack.Screen name="ChatScreen" component={ChatScreen} />
+        <Stack.Screen name="ChatbotScreen" component={ChatbotScreen} />
+        
+        {/* Other Screens */}
+        <Stack.Screen name="HelpAndSupportScreen" component={HelpAndSupportScreen} />
         <Stack.Screen name="SettingScreen" component={SettingScreen} />
-        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
       </Stack.Navigator>
 
       <Toast
@@ -92,7 +105,7 @@ export default function StackNavigator() {
   );
 }
 
-// Toast styles
+// Toast styles with Mirrora theme
 const styles = StyleSheet.create({
   toastContainer: {
     borderLeftWidth: 6,
@@ -109,10 +122,10 @@ const styles = StyleSheet.create({
   toastTitle: {
     fontSize: 15,
     fontWeight: "bold",
-    color: "#111",
+    color: "#2C1810",
   },
   toastMessage: {
     fontSize: 13,
-    color: "#444",
+    color: "#6B7280",
   },
 });
