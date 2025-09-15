@@ -25,6 +25,7 @@ import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
+import ReviewScreen from "../screens/ReviewScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -84,6 +85,7 @@ export default function StackNavigator() {
         <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
         <Stack.Screen name="OrderConfirmationScreen" component={OrderConfirmationScreen} />
         <Stack.Screen name="MyOrderScreen" component={MyOrderScreen} />
+        <Stack.Screen name="ReviewScreen" component={ReviewScreen} />
         
         {/* Message/Chat Related Screens */}
         <Stack.Screen name="MessageScreen" component={MessageScreen} />

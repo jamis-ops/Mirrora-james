@@ -7,6 +7,7 @@ import {
   Image,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -21,6 +22,11 @@ import {
   setDoc,
   updateDoc,
   increment,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
@@ -41,6 +47,10 @@ export default function ProductScreen() {
   const { product, addToWishlist } = route.params;
 
   const [isWishlisted, setIsWishlisted] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(true);
+  const [averageRating, setAverageRating] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
 
   // Load fonts
   const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
@@ -64,6 +74,55 @@ export default function ProductScreen() {
     };
 
     checkWishlistStatus();
+  }, [product.id]);
+
+  // ✅ Fetch reviews for this product
+  useEffect(() => {
+    const fetchReviews = () => {
+      const q = query(
+        collection(db, 'reviews'),
+        where('productInfo.id', '==', product.id),
+        where('isVisible', '==', true),
+        orderBy('date', 'desc')
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const reviewList = [];
+          let totalRating = 0;
+          
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.isVisible) {
+              reviewList.push({
+                id: doc.id,
+                userName: data.userName || 'Anonymous',
+                rating: data.rating || 0,
+                comment: data.comment || '',
+                date: data.date?.toDate() || new Date(),
+                avatar: data.avatar || 'US'
+              });
+              totalRating += data.rating || 0;
+            }
+          });
+
+          setReviews(reviewList);
+          setTotalReviews(reviewList.length);
+          setAverageRating(reviewList.length > 0 ? (totalRating / reviewList.length).toFixed(1) : 0);
+          setLoadingReviews(false);
+        },
+        (error) => {
+          console.error("Error fetching reviews:", error);
+          setLoadingReviews(false);
+        }
+      );
+
+      return unsubscribe;
+    };
+
+    const unsubscribe = fetchReviews();
+    return () => unsubscribe();
   }, [product.id]);
 
   // ✅ Add product to cart in Firestore
@@ -94,6 +153,8 @@ export default function ProductScreen() {
           price: product.price,
           imageUrl: product.imageUrl,
           description: product.description || "",
+          dimensions: product.dimensions || "",
+          weight: product.weight || "",
           quantity: 1,
           createdAt: new Date(),
         });
@@ -156,6 +217,58 @@ export default function ProductScreen() {
     navigation.navigate("CustomizationScreen", { product });
   };
 
+  // Handle Write Review button press
+  const handleWriteReview = () => {
+    if (!auth.currentUser) {
+      Toast.show({
+        type: "error",
+        text1: "Login Required",
+        text2: "Please sign in to write a review.",
+      });
+      return;
+    }
+    navigation.navigate("ReviewScreen", { 
+      productInfo: product 
+    });
+  };
+
+  // Handle View All Reviews press
+  const handleViewAllReviews = () => {
+    navigation.navigate("ProductReviewsScreen", { 
+      product,
+      reviews,
+      averageRating,
+      totalReviews
+    });
+  };
+
+  // Render stars for rating
+  const renderStars = (rating) => {
+    return [...Array(5)].map((_, index) => (
+      <Text
+        key={index}
+        style={[
+          styles.star,
+          { 
+            color: index < rating ? '#FFD700' : '#E6E6E6',
+            fontSize: 16
+          }
+        ]}
+      >
+        ★
+      </Text>
+    ));
+  };
+
+  // Format date
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
   if (!leagueSpartanLoaded || !montserratLoaded) {
     return null;
   }
@@ -180,6 +293,22 @@ export default function ProductScreen() {
         <View style={styles.detailsContainer}>
           <Text style={styles.productName}>{product.name}</Text>
           <Text style={styles.productPrice}>₱ {product.price}</Text>
+
+          {/* Rating Summary */}
+          <View style={styles.ratingSummary}>
+            <View style={styles.ratingStars}>
+              {renderStars(Math.round(averageRating))}
+              <Text style={styles.ratingText}>
+                {averageRating} ({totalReviews} reviews)
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.writeReviewButton}
+              onPress={handleWriteReview}
+            >
+           
+            </TouchableOpacity>
+          </View>
 
           {/* Customization link */}
           <TouchableOpacity style={styles.customizeLink} onPress={handleCustomizePress}>
@@ -210,6 +339,61 @@ export default function ProductScreen() {
             <Text style={styles.infoValue}>
               {product.weight || "20.2 pound"}
             </Text>
+          </View>
+
+          {/* Reviews Section */}
+          <View style={styles.reviewsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Customer Reviews</Text>
+              {totalReviews > 0 && (
+                <TouchableOpacity onPress={handleViewAllReviews}>
+                  <Text style={styles.viewAllText}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {loadingReviews ? (
+              <ActivityIndicator size="small" color="#A68B69" style={styles.loadingReviews} />
+            ) : reviews.length === 0 ? (
+              <View style={styles.noReviews}>
+                <Icon name="comment-outline" size={40} color="#ccc" />
+                <Text style={styles.noReviewsText}>No reviews yet</Text>
+                <Text style={styles.noReviewsSubtext}>Be the first to review this product!</Text>
+              </View>
+            ) : (
+              <>
+                {reviews.slice(0, 3).map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewHeader}>
+                      <View style={styles.reviewerInfo}>
+                        <View style={styles.avatar}>
+                          <Text style={styles.avatarText}>{review.avatar}</Text>
+                        </View>
+                        <View>
+                          <Text style={styles.reviewerName}>{review.userName}</Text>
+                          <Text style={styles.reviewDate}>{formatDate(review.date)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.reviewRating}>
+                        {renderStars(review.rating)}
+                      </View>
+                    </View>
+                    <Text style={styles.reviewComment}>{review.comment}</Text>
+                  </View>
+                ))}
+                {reviews.length > 3 && (
+                  <TouchableOpacity 
+                    style={styles.viewAllReviewsButton}
+                    onPress={handleViewAllReviews}
+                  >
+                    <Text style={styles.viewAllReviewsText}>
+                      View All {reviews.length} Reviews
+                    </Text>
+                    <Icon name="chevron-right" size={20} color="#A68B69" />
+                  </TouchableOpacity>
+                )}
+              </>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -253,14 +437,45 @@ const styles = StyleSheet.create({
   backButton: { padding: 5 },
   productImage: { width: "100%", height: 450, resizeMode: "cover" },
   detailsContainer: { paddingHorizontal: 20, paddingVertical: 15 },
-  productName: { fontFamily: "LeagueSpartan_700Bold", fontSize: 24 },
+  productName: { 
+    fontFamily: "LeagueSpartan_700Bold", 
+    fontSize: 24,
+    marginBottom: 5,
+  },
   productPrice: {
     fontFamily: "Montserrat_400Regular",
     fontSize: 18,
     color: "#000",
-    marginTop: 5,
+    marginBottom: 15,
   },
-  customizeLink: { marginTop: 2, marginBottom: 15 },
+  ratingSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  ratingStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 8,
+  },
+  writeReviewButton: {
+    backgroundColor: '#F3EFE9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  writeReviewText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 12,
+    color: "#A68B69",
+  },
+  customizeLink: { marginBottom: 15 },
   customizeText: {
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 12,
@@ -272,7 +487,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#555",
     lineHeight: 20,
-    marginTop: 5,
+    marginBottom: 15,
   },
   divider: {
     borderBottomColor: "#E0E0E0",
@@ -294,6 +509,116 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat_600SemiBold",
     fontSize: 14,
     color: "#000",
+  },
+  reviewsSection: {
+    marginTop: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  sectionTitle: {
+    fontFamily: "LeagueSpartan_700Bold",
+    fontSize: 18,
+    color: "#000",
+  },
+  viewAllText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#A68B69",
+  },
+  loadingReviews: {
+    marginVertical: 20,
+  },
+  noReviews: {
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: '#F9F9F9',
+    borderRadius: 12,
+    marginVertical: 10,
+  },
+  noReviewsText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
+    color: "#666",
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  noReviewsSubtext: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#999",
+    textAlign: 'center',
+  },
+  reviewItem: {
+    backgroundColor: '#F9F9F9',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 12,
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  reviewerInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#A68B69',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  avatarText: {
+    color: '#fff',
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+  },
+  reviewerName: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#000",
+  },
+  reviewDate: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#666",
+  },
+  reviewRating: {
+    flexDirection: 'row',
+  },
+  reviewComment: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#555",
+    lineHeight: 20,
+  },
+  viewAllReviewsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3EFE9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  viewAllReviewsText: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 14,
+    color: "#A68B69",
+    marginRight: 5,
+  },
+  star: {
+    marginRight: 2,
   },
   bottomBar: {
     flexDirection: "row",

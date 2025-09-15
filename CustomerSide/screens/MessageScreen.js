@@ -1,5 +1,5 @@
-// screens/MessageScreen.js - Complete and corrected version
-import React, { useState } from 'react';
+// screens/MessageScreen.js - Updated with Firebase FAQ integration
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,48 @@ import {
   ScrollView,
   StatusBar,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { db } from '../Backend/firebaseConfig';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 const MessageScreen = () => {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState('Support');
+  const [faqs, setFaqs] = useState([]);
+  const [loadingFaqs, setLoadingFaqs] = useState(true);
+
+  useEffect(() => {
+    // Fetch FAQs from Firestore
+    const q = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const faqList = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.isVisible) {
+            faqList.push({
+              id: doc.id,
+              question: data.question,
+              answer: data.answer,
+              order: data.order || 0
+            });
+          }
+        });
+        setFaqs(faqList);
+        setLoadingFaqs(false);
+      },
+      (error) => {
+        console.error("Error fetching FAQs:", error);
+        setLoadingFaqs(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const handleSupportChat = () => {
     navigation.navigate('ChatScreen');
@@ -26,16 +61,69 @@ const MessageScreen = () => {
   };
 
   const handleHelpPress = (type) => {
-    // Navigate to help sections or show more info
     console.log(`Help pressed: ${type}`);
-    // You can navigate to specific help screens here
-    // navigation.navigate('HelpAndSupportScreen', { section: type });
   };
 
-  const handleFaqPress = (question) => {
-    // Navigate to FAQ or show answer
-    console.log(`FAQ pressed: ${question}`);
-    // navigation.navigate('HelpAndSupportScreen', { faq: question });
+  const handleFaqPress = (faq) => {
+    // Navigate to FAQ detail or show answer in a modal
+    navigation.navigate('FAQDetailScreen', { faq });
+  };
+
+  const renderFaqItems = () => {
+    if (loadingFaqs) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#A67B5B" />
+          <Text style={styles.loadingText}>Loading FAQs...</Text>
+        </View>
+      );
+    }
+
+    if (faqs.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon name="help-circle-outline" size={40} color="#ccc" />
+          <Text style={styles.emptyText}>No FAQs available</Text>
+        </View>
+      );
+    }
+
+    // Show only the first 3 FAQs as a preview
+    const previewFaqs = faqs.slice(0, 3);
+    
+    return (
+      <>
+        {previewFaqs.map((faq, index) => (
+          <TouchableOpacity 
+            key={faq.id}
+            style={styles.faqItem}
+            onPress={() => handleFaqPress(faq)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.faqContent}>
+              <Text style={styles.faqQuestion}>{faq.question}</Text>
+              <Text style={styles.faqPreview} numberOfLines={2}>
+                {faq.answer}
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={16} color="#A67B5B" />
+          </TouchableOpacity>
+        ))}
+        
+        {faqs.length > 3 && (
+          <TouchableOpacity 
+            style={styles.faqViewAll}
+            onPress={() => navigation.navigate('HelpAndSupportScreen')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewAllText}>
+              View All {faqs.length} FAQs
+            </Text>
+            <Icon name="arrow-right" size={16} color="#A67B5B" />
+          </TouchableOpacity>
+        )}
+      </>
+    );
   };
 
   return (
@@ -205,55 +293,12 @@ const MessageScreen = () => {
             </View>
           </View>
 
-          {/* FAQ Preview */}
+          {/* FAQ Preview Section */}
           <View style={styles.faqSection}>
             <Text style={styles.faqTitle}>Frequently Asked Questions</Text>
             <Text style={styles.faqSubtitle}>Find quick answers to common questions</Text>
             
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('shipping')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>How long does shipping take?</Text>
-                <Text style={styles.faqPreview}>Standard delivery takes 3-5 business days...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('returns')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>Can I return or exchange my mirror?</Text>
-                <Text style={styles.faqPreview}>Yes, we offer 30-day returns for most items...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('installation')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>Do you offer installation services?</Text>
-                <Text style={styles.faqPreview}>Professional installation is available in select areas...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqViewAll}
-              onPress={() => navigation.navigate('HelpAndSupportScreen')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View All FAQs</Text>
-              <Icon name="arrow-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
+            {renderFaqItems()}
           </View>
         </ScrollView>
       </View>
@@ -535,6 +580,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#A67B5B',
     marginRight: 8,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });
 

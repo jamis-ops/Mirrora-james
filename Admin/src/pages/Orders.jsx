@@ -3,6 +3,8 @@ import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, 
 
 import { db, collection, getDocs, doc, updateDoc } from "../../Backend/firebaseConfig.js";
 import { query, orderBy, limit } from "firebase/firestore";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 // Helper function to format currency
 export const formatCurrency = (amount) => {
@@ -17,6 +19,38 @@ export const formatCurrency = (amount) => {
         currency: 'PHP',
         minimumFractionDigits: 2,
     }).format(amount);
+};
+
+// Confirmation Modal Component
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel" }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+                <div className="p-6 border-b border-gray-200">
+                    <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+                </div>
+                <div className="p-6">
+                    <p className="text-gray-600 mb-6">{message}</p>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-all duration-200"
+                        >
+                            {cancelText}
+                        </button>
+                        <button
+                            onClick={onConfirm}
+                            className="px-4 py-2 text-white bg-[#A68B69] hover:bg-[#8C7355] rounded-lg font-medium transition-all duration-200"
+                        >
+                            {confirmText}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // Enhanced Header Component
@@ -39,8 +73,8 @@ const Header = () => (
     </header>
 );
 
-// Enhanced Status Badge Component
-const EnhancedStatusBadge = ({ status, orderId, onUpdate }) => {
+// Enhanced Status Badge Component with workflow enforcement
+const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
     const statusConfig = {
         pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', icon: Clock },
         confirmed: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle },
@@ -54,20 +88,38 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate }) => {
     const config = statusConfig[status] || statusConfig.pending;
     const Icon = config.icon;
 
+    // Define the status progression
+    const getAvailableStatusOptions = (currentStatus) => {
+        const statusOrder = ['pending', 'processing', 'shipped', 'delivered'];
+        const currentIndex = statusOrder.indexOf(currentStatus);
+        
+        if (currentIndex === -1) return statusOrder; // For non-standard statuses, show all
+        
+        // Only allow moving forward in the workflow, not backward
+        return statusOrder.filter((_, index) => index >= currentIndex);
+    };
+
+    const availableOptions = getAvailableStatusOptions(currentStatus);
+
     return (
         <div className="relative">
             <select
                 value={status}
                 onChange={(e) => onUpdate(orderId, e.target.value)}
                 className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
+                disabled={!availableOptions.includes(status) && status !== currentStatus}
             >
-                <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="processing">Processing</option>
-                <option value="shipped">Shipped</option>
-                <option value="delivered">Delivered</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="refunded">Refunded</option>
+                {availableOptions.map(option => (
+                    <option key={option} value={option}>
+                        {option.charAt(0).toUpperCase() + option.slice(1)}
+                    </option>
+                ))}
+                {/* Include current status even if not in available options to show it */}
+                {!availableOptions.includes(status) && (
+                    <option value={status} disabled>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </option>
+                )}
             </select>
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
                 <Icon className="w-4 h-4" />
@@ -148,30 +200,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     const downpaymentAmount = totalAmount * 0.5;
     const remainingAmount = totalAmount - downpaymentAmount;
 
-    // Function to handle export details click
-    const handleExportDetails = () => {
-        const orderData = {
-            orderId: order.id,
-            orderDate: order.date,
-            orderTime: order.time,
-            customerName: order.customer?.name || order.customerName || 'N/A',
-            customerEmail: order.customer?.email || order.customerEmail || order.email || 'N/A',
-            customerPhone: order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || 'N/A',
-            productName: order.product || order.productName || 'N/A',
-            quantity: order.quantity || '1',
-            totalAmount: totalAmount,
-            paidAmount: order.payment === 'paid' ? totalAmount : order.payment === 'partial' ? downpaymentAmount : 0,
-            remainingBalance: order.payment === 'paid' ? 0 : order.payment === 'partial' ? remainingAmount : totalAmount,
-            paymentMethod: order.paymentMethod || 'N/A',
-            referenceNumber: order.referenceNumber || order.refNumber || 'N/A',
-            orderStatus: order.status,
-            paymentStatus: order.payment
-        };
-
-        const params = new URLSearchParams(orderData);
-        window.open(`https://docs.google.com/spreadsheets/d/1uThQOZeyImn2QlwW10m7Y-rzklQKtxk-99aFUvC8Fko/edit?usp=sharing&${params.toString()}`, '_blank');
-    };
-
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
@@ -196,10 +224,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                 <div className="p-6 space-y-8">
                     {/* Quick Actions */}
                     <div className="flex flex-wrap gap-3">
-                        <button onClick={handleExportDetails} className="px-4 py-2 bg-[#A68B69] hover:bg-[#8C7355] text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
-                            <Download className="w-4 h-4" />
-                            Export Details
-                        </button>
                         <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
                             <Mail className="w-4 h-4" />
                             Email Customer
@@ -229,7 +253,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Order Status</label>
-                                <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} />
+                                <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} currentStatus={order.status} />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
@@ -443,6 +467,44 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     );
 };
 
+// Helper function to extract customer name from order
+const getCustomerName = (order) => {
+    // Check all possible locations where customer name might be stored
+    if (order.customer?.name) return order.customer.name;
+    if (order.customerName) return order.customerName;
+    if (order.items && order.items[0]?.name) return order.items[0].name;
+    if (order.shippingInfo?.name) return order.shippingInfo.name;
+    if (order.userInfo?.name) return order.userInfo.name;
+    return 'N/A';
+};
+
+// Helper function to extract product name from order
+const getProductName = (order) => {
+    if (order.product) return order.product;
+    if (order.productName) return order.productName;
+    if (order.items && order.items[0]?.productName) return order.items[0].productName;
+    if (order.items && order.items[0]?.name) return order.items[0].name;
+    return 'N/A';
+};
+
+// Helper function to extract total amount from order
+const getTotalAmount = (order) => {
+    if (order.amount) return order.amount;
+    if (order.price) return order.price;
+    if (order.items && order.items[0]?.total) return order.items[0].total;
+    if (order.total) return order.total;
+    return '0';
+};
+
+// Helper function to extract order date from order
+const getOrderDate = (order) => {
+    if (order.date) return order.date;
+    if (order.orderDate) return order.orderDate;
+    if (order.createdAt) return order.createdAt;
+    if (order.timestamp) return order.timestamp;
+    return 'N/A';
+};
+
 // Main Orders Component
 export default function Orders() {
     const [orders, setOrders] = useState([]);
@@ -453,18 +515,31 @@ export default function Orders() {
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const ordersPerPage = 5;
+    
+    // State for confirmation modals
+    const [showStatusConfirm, setShowStatusConfirm] = useState(false);
+    const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
+    const [pendingUpdate, setPendingUpdate] = useState({ type: '', orderId: '', newValue: '' });
 
     // Enhanced date formatting function for table display
     const formatOrderDate = useCallback((dateStr) => {
         try {
             let date;
-            if (dateStr && dateStr.includes('/')) {
+            
+            // Handle Firebase Timestamp objects
+            if (dateStr && typeof dateStr === 'object' && dateStr.seconds) {
+                date = new Date(dateStr.seconds * 1000);
+            } 
+            // Handle string dates
+            else if (dateStr && dateStr.includes('/')) {
                 const [month, day, year] = dateStr.split('/');
                 date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
             } else if (dateStr && dateStr.includes('-')) {
                 date = new Date(dateStr);
-            } else {
+            } else if (dateStr) {
                 date = new Date(dateStr);
+            } else {
+                return 'N/A';
             }
 
             if (isNaN(date.getTime())) {
@@ -477,6 +552,7 @@ export default function Orders() {
                 day: 'numeric'
             });
         } catch (error) {
+            console.error("Error formatting date:", error, dateStr);
             return dateStr || 'Invalid Date';
         }
     }, []);
@@ -492,6 +568,13 @@ export default function Orders() {
                 ...doc.data()
             }));
             setOrders(ordersList);
+            
+            // Debug: Log the first order to see its structure
+            if (ordersList.length > 0) {
+                console.log("First order structure:", ordersList[0]);
+                console.log("Order date field:", ordersList[0].date);
+                console.log("Order timestamp field:", ordersList[0].timestamp);
+            }
         } catch (error) {
             console.error("Error fetching orders:", error);
         } finally {
@@ -507,7 +590,7 @@ export default function Orders() {
     // Memoized calculations to avoid re-calculating on every render
     const filteredOrders = useMemo(() => {
         return orders.filter((order) => {
-            const customerName = order.customer?.name || order.customerName || '';
+            const customerName = getCustomerName(order);
             const customerEmail = order.customer?.email || order.customerEmail || order.email || '';
             const customerPhone = order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || '';
 
@@ -516,10 +599,13 @@ export default function Orders() {
                 customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 customerPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (order.product || order.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (order.amount || order.price || '').toString().toLowerCase().includes(searchQuery.toLowerCase());
+                getProductName(order).toLowerCase().includes(searchQuery.toLowerCase()) ||
+                getTotalAmount(order).toString().toLowerCase().includes(searchQuery.toLowerCase());
 
-            const matchesStatus = statusFilter === "All Status" || order.status.toLowerCase() === statusFilter.toLowerCase();
+            // Fixed: Case-insensitive status matching
+            const matchesStatus = statusFilter === "All Status" || 
+                (order.status && order.status.toLowerCase() === statusFilter.toLowerCase());
+            
             return matchesSearch && matchesStatus;
         });
     }, [orders, searchQuery, statusFilter]);
@@ -529,32 +615,99 @@ export default function Orders() {
     const startIndex = (currentPage - 1) * ordersPerPage;
     const currentOrders = filteredOrders.slice(startIndex, startIndex + ordersPerPage);
 
-    // Calculate order counts and revenue
+    // Calculate order counts and revenue - FIXED: Added null checks and case-insensitive comparison
     const orderCounts = useMemo(() => ({
         total: orders.length,
-        pending: orders.filter((o) => o.status === "pending").length,
-        processing: orders.filter((o) => o.status === "processing").length,
-        shipped: orders.filter((o) => o.status === "shipped").length,
-        delivered: orders.filter((o) => o.status === "delivered").length,
+        pending: orders.filter((o) => o.status && o.status.toLowerCase() === "pending").length,
+        processing: orders.filter((o) => o.status && o.status.toLowerCase() === "processing").length,
+        shipped: orders.filter((o) => o.status && o.status.toLowerCase() === "shipped").length,
+        delivered: orders.filter((o) => o.status && o.status.toLowerCase() === "delivered").length,
     }), [orders]);
 
-    const totalRevenue = useMemo(() => orders.filter(order => order.payment === 'paid').reduce((sum, order) => {
-        const amount = order.amount || order.price || '0';
-        const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
-        return sum + numericAmount;
-    }, 0), [orders]);
+    // FIXED: Calculate revenue from delivered AND paid orders
+    const totalRevenue = useMemo(() => {
+        return orders
+            .filter(order => 
+                order.status && order.status.toLowerCase() === "delivered" && 
+                order.payment && (order.payment.toLowerCase() === "paid" || order.payment.toLowerCase() === "partial")
+            )
+            .reduce((sum, order) => {
+                const amount = getTotalAmount(order);
+                let numericAmount = 0;
+                
+                // Handle different amount formats
+                if (typeof amount === 'string') {
+                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
+                } else if (typeof amount === 'number') {
+                    numericAmount = amount;
+                }
+                
+                // If payment is partial, only count 50% of the amount
+                if (order.payment && order.payment.toLowerCase() === "partial") {
+                    return sum + (numericAmount * 0.5);
+                }
+                
+                return sum + numericAmount;
+            }, 0);
+    }, [orders]);
 
-    const partialRevenue = useMemo(() => orders.filter(order => order.payment === 'partial').reduce((sum, order) => {
-        const amount = order.amount || order.price || '0';
-        const numericAmount = parseInt(amount.toString().replace(/[₱,]/g, '')) || 0;
-        return sum + (numericAmount * 0.5);
-    }, 0), [orders]);
+    // Calculate total collected revenue (all paid orders regardless of status)
+    const totalCollected = useMemo(() => {
+        return orders
+            .filter(order => order.payment && (order.payment.toLowerCase() === "paid" || order.payment.toLowerCase() === "partial"))
+            .reduce((sum, order) => {
+                const amount = getTotalAmount(order);
+                let numericAmount = 0;
+                
+                if (typeof amount === 'string') {
+                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
+                } else if (typeof amount === 'number') {
+                    numericAmount = amount;
+                }
+                
+                if (order.payment && order.payment.toLowerCase() === "partial") {
+                    return sum + (numericAmount * 0.5);
+                }
+                
+                return sum + numericAmount;
+            }, 0);
+    }, [orders]);
 
-    const totalCollected = totalRevenue + partialRevenue;
+    // Debug useEffect to check order counts and revenue
+    useEffect(() => {
+        console.log("Order counts:", orderCounts);
+        console.log("Total revenue from delivered orders:", totalRevenue);
+        console.log("Total collected revenue:", totalCollected);
+        console.log("Delivered orders:", orders.filter((o) => o.status && o.status.toLowerCase() === "delivered"));
+    }, [orders, orderCounts, totalRevenue, totalCollected]);
 
     const handleViewOrder = (order) => {
         setSelectedOrder(order);
         setShowOrderDetail(true);
+    };
+
+    // Function to handle status update with confirmation
+    const handleStatusUpdateRequest = (orderId, newStatus) => {
+        const order = orders.find(o => o.id === orderId);
+        setPendingUpdate({
+            type: 'status',
+            orderId,
+            newValue: newStatus,
+            currentValue: order.status
+        });
+        setShowStatusConfirm(true);
+    };
+
+    // Function to handle payment status update with confirmation
+    const handlePaymentUpdateRequest = (orderId, newPaymentStatus) => {
+        const order = orders.find(o => o.id === orderId);
+        setPendingUpdate({
+            type: 'payment',
+            orderId,
+            newValue: newPaymentStatus,
+            currentValue: order.payment
+        });
+        setShowPaymentConfirm(true);
     };
 
     // Function to update order status in Firestore
@@ -563,7 +716,7 @@ export default function Orders() {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { status: newStatus });
             setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, status: newStatus } : order));
-            alert("Order status updated successfully!");
+            setShowStatusConfirm(false);
         } catch (error) {
             console.error("Error updating order status:", error);
             alert("Failed to update order status. Please try again.");
@@ -576,14 +729,44 @@ export default function Orders() {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { payment: newPaymentStatus });
             setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, payment: newPaymentStatus } : order));
-            alert("Payment status updated successfully!");
+            setShowPaymentConfirm(false);
         } catch (error) {
             console.error("Error updating payment status:", error);
             alert("Failed to update payment status. Please try again.");
         }
     };
 
-    const statusOptions = ["All Status", "Pending", "Confirmed", "Processing", "Shipped", "Delivered"];
+    // Function to export orders to Excel
+    const exportToExcel = () => {
+        if (!filteredOrders || filteredOrders.length === 0) {
+            alert("No orders to export.");
+            return;
+        }
+
+        // Flatten orders for Excel
+        const exportData = filteredOrders.map(order => ({
+            OrderID: order.id,
+            CustomerName: getCustomerName(order),
+            Email: order.customer?.email || order.customerEmail || order.email || "N/A",
+            Phone: order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || "N/A",
+            Product: getProductName(order),
+            Quantity: order.items?.[0]?.quantity || order.quantity || 1,
+            TotalAmount: getTotalAmount(order),
+            Status: order.status || "N/A",
+            Payment: order.payment || "N/A",
+            Date: getOrderDate(order) || "N/A",
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
+
+        const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        const data = new Blob([excelBuffer], { type: "application/octet-stream" });
+        saveAs(data, "orders.xlsx");
+    };
+
+    const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered"];
 
     if (loading) {
         return (
@@ -608,11 +791,11 @@ export default function Orders() {
                         </div>
                         <div className="flex items-center gap-6">
                             <div className="text-right">
-                                <p className="text-sm font-medium text-gray-500 mb-1">Total Revenue Collected</p>
+                                <p className="text-sm font-medium text-gray-500 mb-1">Revenue from Delivered Orders</p>
                                 <p className="text-3xl font-bold text-[#A68B69]">
-                                    ₱{totalCollected.toLocaleString()}
+                                    {formatCurrency(totalRevenue)}
                                 </p>
-                                <p className="text-xs text-gray-500">Includes downpayments</p>
+                                <p className="text-xs text-gray-500">From delivered and paid orders</p>
                             </div>
                             <div className="w-16 h-16 bg-[#A68B69] rounded-2xl flex items-center justify-center shadow-lg">
                                 <TrendingUp className="w-8 h-8 text-white" />
@@ -739,6 +922,12 @@ export default function Orders() {
                                 ))}
                             </select>
                         </div>
+                        <button
+                            onClick={exportToExcel}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl ml-2 transition-all duration-200 flex items-center gap-2"
+                        >
+                            <Download className="w-4 h-4" /> Export Orders
+                        </button>
                     </div>
                 </div>
 
@@ -762,14 +951,19 @@ export default function Orders() {
                                     currentOrders.map((order) => (
                                         <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
                                             <td className="p-4 font-medium text-gray-900">{order.id}</td>
-                                            <td className="p-4">{order.items[0]?.name || 'N/A'}</td>
-                                            <td className="p-4">{order.items[0]?.productName || 'N/A'}</td>
-                                            <td className="p-4">{formatOrderDate(order.date)}</td>
-                                            <td className="p-4">{order.items[0]?.total}</td>
+                                            <td className="p-4">{getCustomerName(order)}</td>
+                                            <td className="p-4">{getProductName(order)}</td>
+                                            <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
+                                            <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
                                             
                                             
                                             <td className="p-4">
-                                                <EnhancedStatusBadge status={order.status} />
+                                                <EnhancedStatusBadge 
+                                                    status={order.status} 
+                                                    orderId={order.id} 
+                                                    onUpdate={handleStatusUpdateRequest}
+                                                    currentStatus={order.status}
+                                                />
                                             </td>
                                            
                                             <td className="p-4">
@@ -828,15 +1022,39 @@ export default function Orders() {
                     )}
                 </div>
             </main>
+            
+            {/* Order Detail Modal */}
             {showOrderDetail && selectedOrder && (
                 <OrderDetailModal
                     order={selectedOrder}
                     isOpen={showOrderDetail}
                     onClose={() => setShowOrderDetail(false)}
-                    onUpdateStatus={handleUpdateOrderStatus}
-                    onUpdatePayment={handleUpdatePaymentStatus}
+                    onUpdateStatus={handleStatusUpdateRequest}
+                    onUpdatePayment={handlePaymentUpdateRequest}
                 />
             )}
+            
+            {/* Status Update Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showStatusConfirm}
+                onClose={() => setShowStatusConfirm(false)}
+                onConfirm={() => handleUpdateOrderStatus(pendingUpdate.orderId, pendingUpdate.newValue)}
+                title="Confirm Status Update"
+                message={`Are you sure you want to change the order status from "${pendingUpdate.currentValue}" to "${pendingUpdate.newValue}"?`}
+                confirmText="Update Status"
+                cancelText="Cancel"
+            />
+            
+            {/* Payment Status Update Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showPaymentConfirm}
+                onClose={() => setShowPaymentConfirm(false)}
+                onConfirm={() => handleUpdatePaymentStatus(pendingUpdate.orderId, pendingUpdate.newValue)}
+                title="Confirm Payment Status Update"
+                message={`Are you sure you want to change the payment status from "${pendingUpdate.currentValue}" to "${pendingUpdate.newValue}"?`}
+                confirmText="Update Payment Status"
+                cancelText="Cancel"
+            />
         </div>
     );
 }

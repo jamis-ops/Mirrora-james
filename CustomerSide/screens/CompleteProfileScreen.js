@@ -4,11 +4,13 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useNavigation } from "@react-navigation/native";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
+import * as ImagePicker from 'expo-image-picker'; // Add this import
 
 // --- Firebase Imports ---
-import { auth, db } from '../Backend/firebaseConfig';
+import { auth, db, storage } from '../Backend/firebaseConfig'; // Make sure storage is imported
 import { updateProfile, signInWithCustomToken } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Add storage functions
 
 export default function CompleteProfileScreen() {
     const navigation = useNavigation();
@@ -16,6 +18,8 @@ export default function CompleteProfileScreen() {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [gender, setGender] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
+    const [profileImage, setProfileImage] = useState(null); // Add state for profile image
+    const [uploading, setUploading] = useState(false); // Add state for image upload
 
     // --- State for Backend Operations ---
     const [loading, setLoading] = useState(true); // For initial data fetch
@@ -23,6 +27,72 @@ export default function CompleteProfileScreen() {
 
     const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold, });
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
+
+    // --- Phone number validation function ---
+    const handlePhoneNumberChange = (text) => {
+        // Remove any non-digit characters
+        const cleanedText = text.replace(/[^0-9]/g, '');
+        
+        // Limit to 10 digits (without country code)
+        if (cleanedText.length <= 10) {
+            setPhoneNumber(cleanedText);
+        }
+    };
+
+    // --- Profile image selection function ---
+    const pickImage = async () => {
+        try {
+            // Request permission to access media library
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            
+            if (status !== 'granted') {
+                Alert.alert('Permission required', 'Sorry, we need camera roll permissions to change your profile picture.');
+                return;
+            }
+
+            // Launch image picker
+            let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.5,
+            });
+
+            if (!result.canceled) {
+                setProfileImage(result.assets[0].uri);
+            }
+        } catch (error) {
+            console.error('Error picking image:', error);
+            Alert.alert('Error', 'Failed to pick image. Please try again.');
+        }
+    };
+
+    // --- Upload image to Firebase Storage ---
+    const uploadImage = async (uri) => {
+        try {
+            setUploading(true);
+            
+            // Convert image to blob
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            
+            // Create a reference to the file in Firebase Storage
+            const storageRef = ref(storage, `profileImages/${auth.currentUser.uid}`);
+            
+            // Upload the file
+            await uploadBytes(storageRef, blob);
+            
+            // Get the download URL
+            const downloadURL = await getDownloadURL(storageRef);
+            
+            return downloadURL;
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            throw error;
+        } finally {
+            setUploading(false);
+        }
+    };
 
     // --- Fetch Existing Profile Data ---
     useEffect(() => {
@@ -43,8 +113,18 @@ export default function CompleteProfileScreen() {
                         setName(userData.name || currentUser.displayName || '');
                         setPhoneNumber(userData.phoneNumber || '');
                         setGender(userData.gender || '');
+                        
+                        // Set profile image if available
+                        if (userData.profileImage) {
+                            setProfileImage(userData.profileImage);
+                        } else if (currentUser.photoURL) {
+                            setProfileImage(currentUser.photoURL);
+                        }
                     } else {
                         setName(currentUser.displayName || '');
+                        if (currentUser.photoURL) {
+                            setProfileImage(currentUser.photoURL);
+                        }
                     }
                 }
             } catch (error) {
@@ -68,15 +148,36 @@ export default function CompleteProfileScreen() {
             return;
         }
 
+        // Validate phone number (10 digits without country code)
+        if (phoneNumber && phoneNumber.length !== 10) {
+            Alert.alert("Validation Error", "Please enter a valid 10-digit phone number.");
+            return;
+        }
+
         setSaving(true);
         try {
-            await updateProfile(currentUser, { displayName: name });
+            let profileImageUrl = profileImage;
+            
+            // Upload new image if it's a local URI (starts with file://)
+            if (profileImage && profileImage.startsWith('file://')) {
+                profileImageUrl = await uploadImage(profileImage);
+            }
+            
+            // Update Firebase Auth profile
+            await updateProfile(currentUser, { 
+                displayName: name,
+                photoURL: profileImageUrl 
+            });
+            
+            // Update Firestore document
             const userDocRef = doc(db, "users", currentUser.uid);
             await setDoc(userDocRef, {
                 name: name,
                 phoneNumber: phoneNumber,
                 gender: gender,
-                email: currentUser.email
+                profileImage: profileImageUrl,
+                email: currentUser.email,
+                updatedAt: new Date()
             }, { merge: true });
 
             Alert.alert("Success", "Your profile has been updated.");
@@ -144,9 +245,20 @@ export default function CompleteProfileScreen() {
 
                 {/* Profile Picture Section */}
                 <View style={styles.profileImageContainer}>
-                    <Icon name="account" size={80} color="#A68B69" />
-                    <TouchableOpacity style={styles.editIcon}>
-                        <Icon name="pencil" size={16} color="#000" />
+                    {profileImage ? (
+                        <Image 
+                            source={{ uri: profileImage }} 
+                            style={styles.profileImage}
+                        />
+                    ) : (
+                        <Icon name="account" size={80} color="#A68B69" />
+                    )}
+                    <TouchableOpacity style={styles.editIcon} onPress={pickImage} disabled={uploading}>
+                        {uploading ? (
+                            <ActivityIndicator size="small" color="#000" />
+                        ) : (
+                            <Icon name="pencil" size={16} color="#000" />
+                        )}
                     </TouchableOpacity>
                 </View>
 
@@ -171,13 +283,17 @@ export default function CompleteProfileScreen() {
                         </View>
                         <TextInput
                             style={styles.phoneInput}
-                            placeholder="Enter Phone Number"
+                            placeholder="9123456789"
                             placeholderTextColor="#999"
                             keyboardType="phone-pad"
                             value={phoneNumber}
-                            onChangeText={setPhoneNumber}
+                            onChangeText={handlePhoneNumberChange} // Use the validation function
+                            maxLength={10} // Set max length to 10 digits
                         />
                     </View>
+                    {phoneNumber.length > 0 && phoneNumber.length < 10 && (
+                        <Text style={styles.errorText}>Phone number must be 10 digits</Text>
+                    )}
 
                     {/* Gender Dropdown */}
                     <Text style={styles.label}>Gender</Text>
@@ -190,8 +306,12 @@ export default function CompleteProfileScreen() {
                 </View>
 
                 {/* Complete Profile Button */}
-                <TouchableOpacity style={styles.completeButton} onPress={handleSaveProfile} disabled={saving}>
-                    {saving ? (
+                <TouchableOpacity 
+                    style={[styles.completeButton, (saving || uploading) && styles.disabledButton]} 
+                    onPress={handleSaveProfile} 
+                    disabled={saving || uploading}
+                >
+                    {saving || uploading ? (
                         <ActivityIndicator color="#fff" />
                     ) : (
                         <Text style={styles.completeButtonText}>Complete Profile</Text>
@@ -253,6 +373,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 50,
         position: 'relative',
+        overflow: 'hidden',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
@@ -264,6 +385,11 @@ const styles = StyleSheet.create({
                 elevation: 3,
             },
         }),
+    },
+    profileImage: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 70,
     },
     editIcon: {
         position: 'absolute',
@@ -325,7 +451,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: '#fff',
         borderRadius: 12,
-        marginBottom: 24,
+        marginBottom: 8, // Reduced margin to make room for error text
         height: 45,
         ...Platform.select({
             ios: {
@@ -412,11 +538,21 @@ const styles = StyleSheet.create({
             },
         }),
     },
+    disabledButton: {
+        opacity: 0.6,
+    },
     completeButtonText: {
         color: '#fff',
         fontFamily: 'Montserrat_600SemiBold',
         fontSize: 18,
         letterSpacing: 0.5,
+    },
+    errorText: {
+        color: '#FF3B30',
+        fontSize: 12,
+        marginBottom: 16,
+        marginLeft: 4,
+        fontFamily: 'Montserrat_400Regular',
     },
     // Modal styles
     centeredView: {
