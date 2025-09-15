@@ -14,6 +14,7 @@ import ProductScreen from "../screens/ProductScreen";
 import MessageScreen from "../screens/MessageScreen";
 import ChatScreen from "../screens/ChatScreen"; // New chat screen
 import HelpAndSupportScreen from "../screens/HelpAndSupportScreen";
+import HelpDetailScreen from "../screens/HelpDetailScreen";         // New help detail screen
 import CustomizationScreen from "../screens/CustomizationScreen";
 import ProductListScreen from "../screens/ProductListScreen";
 import ChatbotScreen from "../screens/ChatbotScreen";
@@ -22,6 +23,8 @@ import OrderConfirmationScreen from "../screens/OrderConfirmationScreen";
 import MyOrderScreen from "../screens/MyOrderScreen";
 import SettingScreen from "../screens/SettingScreen";
 import VerifyEmailScreen from "../screens/VerifyEmailScreen";
+import MyAddressScreen from "../screens/MyAddressScreen";
+import WishlistScreen from "../screens/WishlistScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
@@ -90,9 +93,15 @@ export default function StackNavigator() {
         <Stack.Screen name="ChatScreen" component={ChatScreen} />
         <Stack.Screen name="ChatbotScreen" component={ChatbotScreen} />
         
-        {/* Other Screens */}
+        {/* Help & Support Related Screens */}
         <Stack.Screen name="HelpAndSupportScreen" component={HelpAndSupportScreen} />
+        <Stack.Screen name="HelpDetailScreen" component={HelpDetailScreen} />
+        
+        {/* Other Screens */}
         <Stack.Screen name="SettingScreen" component={SettingScreen} />
+        <Stack.Screen name="MyAddressScreen" component={MyAddressScreen} />
+        <Stack.Screen name="Wishlist" component={WishlistScreen} />
+        
       </Stack.Navigator>
 
       <Toast

@@ -1,4 +1,4 @@
-// screens/MessageScreen.js - Complete and corrected version
+// screens/MessageScreen.js - Complete and corrected version with functional help section
 import React, { useState } from 'react';
 import {
   View,
@@ -26,16 +26,15 @@ const MessageScreen = () => {
   };
 
   const handleHelpPress = (type) => {
-    // Navigate to help sections or show more info
+    // Navigate to help sections with specific section data
     console.log(`Help pressed: ${type}`);
-    // You can navigate to specific help screens here
-    // navigation.navigate('HelpAndSupportScreen', { section: type });
+    navigation.navigate('HelpDetailScreen', { section: type });
   };
 
   const handleFaqPress = (question) => {
-    // Navigate to FAQ or show answer
+    // Navigate to FAQ with specific question
     console.log(`FAQ pressed: ${question}`);
-    // navigation.navigate('HelpAndSupportScreen', { faq: question });
+    navigation.navigate('HelpDetailScreen', { faq: question });
   };
 
   return (

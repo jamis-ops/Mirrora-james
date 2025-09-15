@@ -14,12 +14,13 @@ import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
-import BottomNavigationBar from '../components/BottomNavigationBar';
+
 
 // --- Firebase Imports ---
 import { auth, db } from '../Backend/firebaseConfig';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import TabNavigator from './../components/TabNavigator';
 
 export default function ProfileScreen() {
     const navigation = useNavigation();
@@ -189,7 +190,7 @@ const handleNavigation = (screenName) => {
             </Modal>
 
             {/* Bottom Navigation Bar */}
-            <BottomNavigationBar navigation={navigation} currentScreen="account" />
+            <TabNavigator navigation={navigation} currentScreen="Profile" />
         </View>
     );
 }

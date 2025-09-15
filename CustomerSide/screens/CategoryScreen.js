@@ -16,7 +16,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Firebase
-import { collection, onSnapshot } from "firebase/firestore"; // Import onSnapshot
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../Backend/firebaseConfig";
 
 const { width } = Dimensions.get("window");
@@ -28,7 +28,6 @@ export default function CategoryScreen() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    // ⚡️ Listens for real-time changes in the 'categories' collection
     const unsubscribe = onSnapshot(
       collection(db, "categories"),
       (querySnapshot) => {
@@ -42,21 +41,60 @@ export default function CategoryScreen() {
         setLoading(false);
       },
       (error) => {
-        // Handles any errors in the listener
         console.error("❌ Error listening to categories:", error);
         setLoading(false);
       }
     );
 
-    // 🧹 Cleanup function to stop listening when the component unmounts
     return () => unsubscribe();
   }, []);
+
+  const renderCategory = ({ item, index }) => {
+    // Determine if this item should span two columns (every 5th item)
+    const isLargeItem = (index + 1) % 5 === 0;
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.categoryCard,
+          isLargeItem ? styles.largeCategoryCard : styles.smallCategoryCard
+        ]}
+        onPress={() =>
+          navigation.navigate("ProductListScreen", {
+            categoryId: item.id,
+            categoryName: item.name,
+          })
+        }
+      >
+        {item.imageUrl ? (
+          <Image 
+            source={{ uri: item.imageUrl }} 
+            style={[
+              styles.categoryImage,
+              isLargeItem ? styles.largeCategoryImage : styles.smallCategoryImage
+            ]} 
+          />
+        ) : (
+          <View style={[
+            styles.categoryImage,
+            styles.placeholder,
+            isLargeItem ? styles.largeCategoryImage : styles.smallCategoryImage
+          ]}>
+            <Icon name="image-outline" size={40} color="#999" />
+          </View>
+        )}
+        <View style={styles.categoryOverlay}>
+          <Text style={styles.categoryName}>{item.name}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#000" />
-        <Text>Loading categories...</Text>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading categories...</Text>
       </View>
     );
   }
@@ -64,7 +102,8 @@ export default function CategoryScreen() {
   if (categories.length === 0) {
     return (
       <View style={styles.center}>
-        <Text>No categories found</Text>
+        <Icon name="tag-outline" size={60} color="#ccc" />
+        <Text style={styles.emptyText}>No categories found</Text>
       </View>
     );
   }
@@ -77,75 +116,114 @@ export default function CategoryScreen() {
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
-          <Icon name="chevron-left" size={30} color="#000" />
+          <Icon name="chevron-left" size={28} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Category</Text>
-        <View style={{ width: 30 }} />
+        <View style={{ width: 28 }} />
       </View>
 
-      {/* Category List */}
+      {/* Category Grid */}
       <FlatList
         data={categories}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.itemContainer}
-            onPress={() =>
-              navigation.navigate("ProductListScreen", {
-                categoryId: item.id, // pass doc.id
-                categoryName: item.name, // pass name for title
-              })
-            }
-          >
-            {item.imageUrl ? (
-              <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-            ) : (
-              <View style={[styles.itemImage, styles.placeholder]}>
-                <Text>No Image</Text>
-              </View>
-            )}
-            <Text style={styles.itemName}>{item.name}</Text>
-          </TouchableOpacity>
-        )}
+        renderItem={renderCategory}
         numColumns={2}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={styles.gridContainer}
+        columnWrapperStyle={styles.row}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 10,
-    backgroundColor: "#f9f9f9",
+    paddingBottom: 15,
+    backgroundColor: "#ffffff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
   },
-  backButton: { padding: 5 },
-  headerTitle: { fontSize: 20, fontWeight: "700", color: "#000" },
-  list: { padding: 10 },
-  itemContainer: {
-    flex: 1,
-    margin: 10,
-    backgroundColor: "#f8f8f8",
-    borderRadius: 10,
-    alignItems: "center",
-    padding: 15,
+  backButton: {
+    padding: 5,
   },
-  itemImage: {
-    width: width / 2 - 60,
-    height: width / 2 - 60,
-    borderRadius: 10,
-    marginBottom: 10,
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+  },
+  gridContainer: {
+    padding: 16,
+  },
+  row: {
+    justifyContent: "space-around",
+    marginBottom: 16,
+  },
+  centerRow: {
+    justifyContent: "center",
+  },
+  categoryCard: {
+    width: (width - 50) / 2, // Account for padding and gap
+    height: 210,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  categoryImage: {
+    width: "100%",
+    height: 165,
+    resizeMode: "cover",
   },
   placeholder: {
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#ddd",
+    backgroundColor: "#f5f5f5",
   },
-  itemName: { fontSize: 16, fontWeight: "600", textAlign: "center" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  categoryOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  categoryName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    textAlign: "left",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: "#666",
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 18,
+    color: "#999",
+    textAlign: "center",
+  },
 });

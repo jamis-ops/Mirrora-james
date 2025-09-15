@@ -544,7 +544,7 @@ Please let me know if you'd like to proceed with this customization!`;
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 font-sans">
+    <div className="flex flex-col h-screen bg-gray-50 font-sans">
       <div className="flex flex-1 overflow-hidden rounded-xl shadow-lg m-6 bg-white">
         
         {/* Left Sidebar - Message List */}

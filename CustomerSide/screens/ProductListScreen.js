@@ -45,12 +45,12 @@ const { width } = Dimensions.get("window");
 export default function ProductListScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  // support undefined params safely
   const { categoryId, categoryName } = route.params ?? {};
 
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tempClicked, setTempClicked] = useState({});
+  const [viewMode, setViewMode] = useState("grid"); // 'grid' or 'list'
 
   const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
   const [montserratLoaded] = useMontserrat({
@@ -60,15 +60,19 @@ export default function ProductListScreen() {
 
   const insets = useSafeAreaInsets();
 
+  // Fetch products
   useEffect(() => {
-    // If no categoryId provided, show nothing (or you may adapt to show all)
     if (!categoryId) {
       setProducts([]);
       setLoading(false);
       return;
     }
 
-    const q = query(collection(db, "products"), where("categoryId", "==", categoryId));
+    const q = query(
+      collection(db, "products"),
+      where("categoryId", "==", categoryId)
+    );
+
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -85,7 +89,7 @@ export default function ProductListScreen() {
     return () => unsub();
   }, [categoryId]);
 
-  // Add to Wishlist (keeps your UI behaviour)
+  // Add to Wishlist
   const addToWishlist = async (product) => {
     const user = auth.currentUser;
     if (!user) {
@@ -98,8 +102,8 @@ export default function ProductListScreen() {
       return;
     }
 
-    const docRef = doc(db, "wishlists", user.uid, "items", product.id);
-
+    const docRef = doc(db, "users", user.uid, "wishlist", product.id);
+    
     try {
       const snap = await getDoc(docRef);
       if (!snap.exists()) {
@@ -121,6 +125,7 @@ export default function ProductListScreen() {
           text1: "💖 Added to Wishlist",
           text2: `${product.name} has been saved.`,
           position: "top",
+          onPress: () => navigation.navigate("Wishlist"),
         });
       } else {
         Toast.show({
@@ -128,6 +133,7 @@ export default function ProductListScreen() {
           text1: "Already in Wishlist",
           text2: `${product.name} is already saved.`,
           position: "top",
+          onPress: () => navigation.navigate("Wishlist"),
         });
       }
     } catch (err) {
@@ -141,9 +147,7 @@ export default function ProductListScreen() {
     }
   };
 
-  // Add to Cart — **fixed toast behaviour**
-  // - if item existed already => show 🛒 Cart Updated (info)
-  // - if item was newly added => show 🛒 Added to Cart (success)
+  // Add to Cart
   const addToCart = async (product) => {
     const user = auth.currentUser;
     if (!user) {
@@ -161,10 +165,7 @@ export default function ProductListScreen() {
     try {
       const snap = await getDoc(cartItemRef);
       if (snap.exists()) {
-        // increment quantity
         await updateDoc(cartItemRef, { quantity: increment(1) });
-
-        // **Cart Updated** toast (matches HomeScreen format)
         Toast.show({
           type: "info",
           text1: "🛒 Cart Updated",
@@ -172,7 +173,6 @@ export default function ProductListScreen() {
           position: "top",
         });
       } else {
-        // create item
         await setDoc(cartItemRef, {
           productId: product.id,
           name: product.name,
@@ -181,8 +181,6 @@ export default function ProductListScreen() {
           quantity: 1,
           addedAt: serverTimestamp(),
         });
-
-        // **Added to Cart** toast
         Toast.show({
           type: "success",
           text1: "🛒 Added to Cart",
@@ -201,10 +199,10 @@ export default function ProductListScreen() {
     }
   };
 
-  // fonts loader guard
+  // Fonts loading
   if (!leagueSpartanLoaded || !montserratLoaded) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#A68B69" />
       </View>
     );
@@ -213,35 +211,112 @@ export default function ProductListScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#000" />
+        <ActivityIndicator size="large" color="#A68B69" />
         <Text>Loading products...</Text>
       </View>
     );
   }
 
-  const renderProductItem = ({ item }) => {
+  // Render Grid item
+  const renderGridItem = ({ item }) => {
     const isTempClicked = tempClicked[item.id];
 
     return (
       <View style={styles.itemContainer}>
         <TouchableOpacity
           style={styles.imageWrapper}
-          onPress={() => navigation.navigate("ProductScreen", { product: item, addToCart, addToWishlist })}
+          onPress={() =>
+            navigation.navigate("ProductScreen", {
+              product: item,
+              addToCart,
+              addToWishlist,
+            })
+          }
         >
           <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-          <TouchableOpacity style={styles.wishlistIcon} onPress={() => addToWishlist(item)}>
-            <Ionicons name={isTempClicked ? "heart" : "heart-outline"} size={24} color={isTempClicked ? "red" : "#A68B69"} />
+          <TouchableOpacity
+            style={styles.wishlistIcon}
+            onPress={() => addToWishlist(item)}
+          >
+            <Ionicons
+              name={isTempClicked ? "heart" : "heart-outline"}
+              size={24}
+              color={isTempClicked ? "red" : "#A68B69"}
+            />
           </TouchableOpacity>
         </TouchableOpacity>
 
         <View style={styles.itemDetails}>
           <Text style={styles.itemName}>{item.name}</Text>
-          <Text style={styles.itemPrice}>₱ {item.price}</Text>
-          <TouchableOpacity style={styles.addToCartButton} onPress={() => addToCart(item)}>
-            <Text style={styles.addToCartText}>Add to Cart</Text>
-          </TouchableOpacity>
+          <View style={styles.priceCartRow}>
+            <Text style={styles.itemPrice}>₱ {item.price}</Text>
+            <TouchableOpacity
+              style={styles.addToCartIconButton}
+              onPress={() =>
+                navigation.navigate("ProductScreen", {
+                  product: item,
+                  addToCart,
+                  addToWishlist,
+                })
+              }
+            >
+              <Icon name="cart-plus" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
+    );
+  };
+
+  // Render List item
+  const renderListItem = ({ item }) => {
+    const isTempClicked = tempClicked[item.id];
+
+    return (
+      <TouchableOpacity
+        style={styles.listItemContainer}
+        onPress={() =>
+          navigation.navigate("ProductScreen", {
+            product: item,
+            addToCart,
+            addToWishlist,
+          })
+        }
+      >
+        <View style={styles.listImageWrapper}>
+          <Image source={{ uri: item.imageUrl }} style={styles.listItemImage} />
+          <TouchableOpacity
+            style={styles.listWishlistIcon}
+            onPress={() => addToWishlist(item)}
+          >
+            <Ionicons
+              name={isTempClicked ? "heart" : "heart-outline"}
+              size={20}
+              color={isTempClicked ? "red" : "#A68B69"}
+            />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.listItemDetails}>
+          <Text style={styles.listItemName} numberOfLines={2}>
+            {item.name}
+          </Text>
+          <Text style={styles.listItemPrice}>₱ {item.price}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.listAddToCartButton}
+          onPress={() =>
+            navigation.navigate("ProductScreen", {
+              product: item,
+              addToCart,
+              addToWishlist,
+            })
+          }
+        >
+          <Icon name="cart-plus" size={22} color="#fff" />
+        </TouchableOpacity>
+      </TouchableOpacity>
     );
   };
 
@@ -249,22 +324,43 @@ export default function ProductListScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Icon name="chevron-left" size={30} color="#000" />
         </TouchableOpacity>
         <Text style={styles.title}>{categoryName ?? "Products"}</Text>
-        <TouchableOpacity style={styles.wishlistIconHeader} onPress={() => navigation.navigate("Wishlist")}>
-          <Ionicons name="heart-outline" size={26} color="#000" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.viewModeButton}
+            onPress={() =>
+              setViewMode(viewMode === "grid" ? "list" : "grid")
+            }
+          >
+            <Icon
+              name={viewMode === "grid" ? "format-list-bulleted" : "view-grid"}
+              size={24}
+              color="#A68B69"
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.wishlistIconHeader}
+            onPress={() => navigation.navigate("Wishlist")}
+          >
+            <Ionicons name="heart-outline" size={26} color="#000" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
         data={products}
-        renderItem={renderProductItem}
+        renderItem={viewMode === "grid" ? renderGridItem : renderListItem}
         keyExtractor={(item) => item.id}
-        numColumns={2}
+        numColumns={viewMode === "grid" ? 2 : 1}
+        key={viewMode}
         contentContainerStyle={styles.listContainer}
-        columnWrapperStyle={styles.row}
+        columnWrapperStyle={viewMode === "grid" ? styles.row : null}
         showsVerticalScrollIndicator={false}
       />
     </View>
@@ -272,21 +368,152 @@ export default function ProductListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFF7EC" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 10 },
+  container: { flex: 1, backgroundColor: "#F9F9F9" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
   backButton: { padding: 5 },
-  title: { fontFamily: "LeagueSpartan_700Bold", fontSize: 24, color: "#000" },
-  wishlistIconHeader: { padding: 5 },
+  title: {
+    fontFamily: "LeagueSpartan_700Bold",
+    fontSize: 24,
+    color: "#000",
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: 10,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  viewModeButton: {
+    padding: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(166, 139, 105, 0.1)",
+  },
+  wishlistIconHeader: { padding: 5, zIndex: 1 }, // ✅ ensures press works
   listContainer: { paddingTop: 15, paddingHorizontal: 10 },
   row: { justifyContent: "space-between", marginBottom: 10 },
-  itemContainer: { width: (width - 45) / 2, backgroundColor: "#fff", borderRadius: 10, marginBottom: 20, marginHorizontal: 5, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 3 },
+
+  // Grid View
+  itemContainer: {
+    width: (width - 40) / 2,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    marginBottom: 20,
+    marginHorizontal: 5,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
   imageWrapper: { position: "relative", height: 180 },
   itemImage: { width: "100%", height: "100%", resizeMode: "cover" },
-  wishlistIcon: { position: "absolute", top: 10, right: 10, backgroundColor: "rgba(255, 255, 255, 0.8)", borderRadius: 20, padding: 5 },
-  itemDetails: { padding: 10, backgroundColor: "#F9F7EF", borderBottomLeftRadius: 10, borderBottomRightRadius: 10 },
-  itemName: { fontFamily: "Montserrat_400Regular", fontSize: 14, color: "#000" },
-  itemPrice: { fontFamily: "Montserrat_600SemiBold", fontSize: 16, color: "#A68B69", marginTop: 5, marginBottom: 5 },
-  addToCartButton: { backgroundColor: "#BF9E7B", borderRadius: 8, paddingVertical: 8, alignItems: "center", marginTop: 5 },
-  addToCartText: { fontFamily: "Montserrat_600SemiBold", fontSize: 12, color: "#fff" },
+  wishlistIcon: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 20,
+    padding: 5,
+  },
+  itemDetails: {
+    padding: 10,
+    backgroundColor: "#F9F7EF",
+    borderBottomLeftRadius: 10,
+    borderBottomRightRadius: 10,
+  },
+  itemName: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#000",
+    marginBottom: 8,
+  },
+  priceCartRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  itemPrice: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
+    color: "#A68B69",
+    flex: 1,
+  },
+  addToCartIconButton: {
+    backgroundColor: "#A68B69",
+    borderRadius: 20,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
+
+  // List View
+  listItemContainer: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    marginBottom: 15,
+    marginHorizontal: 5,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+    alignItems: "center",
+    padding: 10,
+  },
+  listImageWrapper: {
+    position: "relative",
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  listItemImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  listWishlistIcon: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderRadius: 15,
+    padding: 3,
+  },
+  listItemDetails: {
+    flex: 1,
+    marginLeft: 15,
+    marginRight: 10,
+  },
+  listItemName: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#000",
+    marginBottom: 5,
+  },
+  listItemPrice: {
+    fontFamily: "Montserrat_600SemiBold",
+    fontSize: 16,
+    color: "#A68B69",
+  },
+  listAddToCartButton: {
+    backgroundColor: "#A68B69",
+    borderRadius: 25,
+    padding: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });

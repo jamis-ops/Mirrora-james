@@ -192,42 +192,35 @@ export default function CustomizationScreen() {
       const customizationSummary = formatCustomizationSummary(formData, product);
       
       // Create seller chat thread reference (using a seller ID - you'll need to implement seller assignment logic)
-      const sellerId = 'mirrora-seller'; // This should be dynamic based on product or region
-      const sellerChatRef = doc(db, `artifacts/${appId}/public/data/chats/${sellerId}`);
-      const sellerMessagesRef = collection(sellerChatRef, 'messages');
-      
+      const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
+const messagesRef = collection(chatThreadRef, 'messages');
+
       // Update seller chat thread
-      await setDoc(sellerChatRef, {
-        lastMessage: `New customization request from ${userName}`,
-        timestamp: serverTimestamp(),
-        userName: userName,
-        userAvatar: userName.substring(0, 2).toUpperCase(),
-        isRead: false,
-        customerId: user.uid,
-        hasCustomizationRequest: true,
-      }, { merge: true });
+      await setDoc(chatThreadRef, {
+      lastMessage: `New customization request from ${userName}`,
+      timestamp: serverTimestamp(),
+      userName: userName,
+      userAvatar: userName.substring(0, 2).toUpperCase(),
+      isRead: false,
+      hasCustomizationRequest: true,
+    }, { merge: true });
 
       // Send customization message to seller
-      await addDoc(sellerMessagesRef, {
-        text: customizationSummary,
-        timestamp: serverTimestamp(),
-        senderId: user.uid,
-        senderName: userName,
-        senderAvatar: userName.substring(0, 2).toUpperCase(),
-        messageType: 'customization_request',
-        customizationData: {
-          ...formData,
-          productInfo: {
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            imageUrl: product.imageUrl,
-          },
-          requestId: `custom_${Date.now()}`,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-        },
-      });
+     await addDoc(messagesRef, {
+  text: customizationSummary,
+  timestamp: serverTimestamp(),
+  senderId: user.uid,
+  senderName: userName,
+  senderAvatar: userName.substring(0, 2).toUpperCase(),
+  messageType: 'customization_request',
+  customizationData: {
+    ...formData,
+    productInfo: product,
+    requestId: `custom_${Date.now()}`,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+  },
+});
 
       // Also save to a separate customization requests collection for easier management
       const customizationRequestsRef = collection(db, `artifacts/${appId}/public/data/customization_requests`);
