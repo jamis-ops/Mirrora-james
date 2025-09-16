@@ -1,190 +1,541 @@
-import React, { useState } from 'react';
-import { Star, Eye, EyeOff, Trash2, CheckCircle, XCircle } from 'lucide-react';
+// src/pages/Reviews.jsx
+import React, { useState, useEffect } from 'react';
+import { Star, Eye, EyeOff, Trash2, CheckCircle, XCircle, RefreshCw, Search, Filter, X, Calendar, Package, User, MessageSquare, TrendingUp, Award, Clock } from 'lucide-react';
+import { db } from "../../Backend/firebaseConfig.js";
+import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+
+const REVIEWS_PER_PAGE = 10; // Define how many reviews to show per page
 
 function Reviews() {
-  // Sample data - replace with your actual data source
-  const [reviews, setReviews] = useState([
-    {
-      id: 1,
-      userName: "Sarah Johnson",
-      rating: 5,
-      comment: "Excellent service! The team was professional and delivered exactly what we needed. Highly recommend!",
-      date: "2024-03-15",
-      isVisible: true,
-      avatar: "SJ"
-    },
-    {
-      id: 2,
-      userName: "Mike Chen",
-      rating: 4,
-      comment: "Great experience overall. Minor delays but the quality of work made up for it. Would work with them again.",
-      date: "2024-03-10",
-      isVisible: true,
-      avatar: "MC"
-    },
-    {
-      id: 3,
-      userName: "Emily Rodriguez",
-      rating: 5,
-      comment: "Outstanding results! The project exceeded our expectations. Very responsive communication throughout.",
-      date: "2024-03-08",
-      isVisible: false,
-      avatar: "ER"
-    },
-    {
-      id: 4,
-      userName: "David Thompson",
-      rating: 3,
-      comment: "Decent work but could improve on timeline management. The final product was good though.",
-      date: "2024-03-05",
-      isVisible: true,
-      avatar: "DT"
-    }
-  ]);
+  const [reviews, setReviews] = useState([]);
+  const [filteredReviews, setFilteredReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [selectedProduct, setSelectedProduct] = useState('all');
+  const [sortBy, setSortBy] = useState('date');
 
-  const toggleVisibility = (id) => {
-    setReviews(reviews.map(review => 
-      review.id === id ? { ...review, isVisible: !review.isVisible } : review
-    ));
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    const q = query(collection(db, 'reviews'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const reviewList = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          reviewList.push({
+            id: doc.id,
+            userName: data.userName || 'Anonymous',
+            rating: data.rating || 0,
+            comment: data.comment || '',
+            date: data.date?.toDate() || new Date(),
+            isVisible: data.isVisible !== false,
+            avatar: data.avatar || 'US',
+            orderId: data.orderId || null,
+            productInfo: data.productInfo || null,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            status: data.status || 'approved'
+          });
+        });
+        setReviews(reviewList);
+        setFilteredReviews(reviewList); // Initialize filteredReviews with all reviews
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching reviews:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    let results = reviews;
+
+    if (searchTerm) {
+      results = results.filter(review =>
+        review.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        review.comment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (review.productInfo && review.productInfo.name &&
+          review.productInfo.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    if (selectedRating > 0) {
+      results = results.filter(review => review.rating === selectedRating);
+    }
+
+    if (selectedProduct !== 'all') {
+      results = results.filter(review =>
+        review.productInfo && review.productInfo.name === selectedProduct
+      );
+    }
+
+    // Sort results
+    results = results.sort((a, b) => {
+      switch (sortBy) {
+        case 'rating':
+          return b.rating - a.rating;
+        case 'date':
+        default:
+          return b.date - a.date;
+      }
+    });
+
+    setFilteredReviews(results);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [searchTerm, selectedRating, selectedProduct, reviews, sortBy]);
+
+  const productOptions = ['all', ...new Set(
+    reviews
+      .filter(review => review.productInfo && review.productInfo.name)
+      .map(review => review.productInfo.name)
+  )];
+
+  const toggleVisibility = async (id, currentVisibility) => {
+    try {
+      const reviewRef = doc(db, 'reviews', id);
+      await updateDoc(reviewRef, {
+        isVisible: !currentVisibility,
+        updatedAt: serverTimestamp() // Use serverTimestamp for consistency
+      });
+    } catch (error) {
+      console.error("Error toggling review visibility:", error);
+      alert("Failed to update review visibility");
+    }
   };
 
-  const deleteReview = (id) => {
-    if (window.confirm('Are you sure you want to delete this review?')) {
-      setReviews(reviews.filter(review => review.id !== id));
-    }
-  };
+  // Delete function removed as per request.
 
   const renderStars = (rating) => {
     return [...Array(5)].map((_, index) => (
       <Star
         key={index}
-        size={16}
+        size={18}
         className={index < rating ? 'fill-current' : ''}
-        style={{ 
-          color: index < rating ? '#A68B69' : '#E6E6E6' 
+        style={{
+          color: index < rating ? '#F59E0B' : '#E5E7EB'
         }}
       />
     ));
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+  const formatDate = (date) => {
+    if (!date) return '';
+    return date.toLocaleDateString('en-US', {
       year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+      month: 'short',
+      day: 'numeric',
     });
   };
 
-  const visibleCount = reviews.filter(review => review.isVisible).length;
-  const totalCount = reviews.length;
+  const formatTime = (date) => {
+    if (!date) return '';
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedRating(0);
+    setSelectedProduct('all');
+    // No need to setSortBy here as it's handled by the dropdown
+  };
+
+  const getAverageRating = () => {
+    if (reviews.length === 0) return 0;
+    const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
+    return (sum / reviews.length).toFixed(1);
+  };
+
+  const getRatingDistribution = () => {
+    const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    reviews.forEach(review => {
+      if (review.rating in distribution) {
+        distribution[review.rating] = (distribution[review.rating] || 0) + 1;
+      }
+    });
+    return distribution;
+  };
+
+  const visibleCount = filteredReviews.filter(review => review.isVisible).length;
+  const hasActiveFilters = searchTerm || selectedRating > 0 || selectedProduct !== 'all';
+  const averageRating = getAverageRating();
+  const ratingDistribution = getRatingDistribution();
+
+  // Pagination logic
+  const totalReviews = filteredReviews.length;
+  const pageCount = Math.ceil(totalReviews / REVIEWS_PER_PAGE);
+  const startIndex = (currentPage - 1) * REVIEWS_PER_PAGE;
+  const endIndex = startIndex + REVIEWS_PER_PAGE;
+  const paginatedReviews = filteredReviews.slice(startIndex, endIndex);
+
+  const handlePageChange = (pageNumber) => {
+    setCurrentPage(pageNumber);
+    // Optional: Scroll to top when changing pages
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F9F9F9] p-6 flex items-center justify-center">
+        <div className="text-center bg-white rounded-2xl p-8 shadow-xl">
+          <div className="w-16 h-16 bg-[#A68B69] rounded-full flex items-center justify-center mx-auto mb-4">
+            <RefreshCw size={28} className="animate-spin text-white" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Reviews</h3>
+          <p className="text-gray-600">Please wait while we fetch your customer feedback...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-[#F9F9F9] p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header with Stats */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Customer Reviews</h1>
-          <p className="text-gray-600">
-            Manage customer feedback and control what appears on your app
-          </p>
-          <div className="flex items-center gap-4 mt-4">
-            <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-              {visibleCount} visible
+          <div className="bg-white rounded-2xl shadow-xl border border-[#E6E6E6] overflow-hidden">
+            <div className="bg-[#A68B69] p-8 text-white">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+                <div className="mb-6 lg:mb-0">
+                  <h1 className="text-4xl font-bold mb-2">Customer Reviews</h1>
+                  <p className="text-[#E0DAD6] text-lg">
+                    Manage customer feedback and showcase testimonials
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center mb-2">
+                      <Star className="fill-current text-yellow-400 mr-1" size={24} />
+                      <span className="text-3xl font-bold">{averageRating}</span>
+                    </div>
+                    <p className="text-[#E0DAD6] text-sm">Average Rating</p>
+                  </div>
+
+                  <div className="w-px h-16 bg-[#CAC8C5]/40"></div>
+
+                  <div className="text-center">
+                    <div className="text-3xl font-bold mb-1">{reviews.length}</div>
+                    <p className="text-[#E0DAD6] text-sm">Total Reviews</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-medium">
-              {totalCount} total
+
+            {/* Quick Stats Bar */}
+            <div className="px-8 py-6 bg-white border-b border-[#E6E6E6]">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <CheckCircle size={20} className="text-green-600" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{visibleCount}</div>
+                    <div className="text-sm text-[#CAC8C5]">Visible</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                    <XCircle size={20} className="text-red-600" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{reviews.length - visibleCount}</div>
+                    <div className="text-sm text-[#CAC8C5]">Hidden</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#E0DAD6] rounded-lg flex items-center justify-center">
+                    <Award size={20} className="text-[#A68B69]" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{ratingDistribution[5]}</div>
+                    <div className="text-sm text-[#CAC8C5]">5-Star Reviews</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#E0DAD6] rounded-lg flex items-center justify-center">
+                    <TrendingUp size={20} className="text-[#A68B69]" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{reviews.length > 0 ? Math.round((ratingDistribution[5] + ratingDistribution[4]) / reviews.length * 100) : 0}%</div>
+                    <div className="text-sm text-[#CAC8C5]">Positive</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Filters */}
+            {hasActiveFilters && (
+              <div className="px-8 py-4 bg-[#E0DAD6] border-b border-[#CAC8C5]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[#A68B69]">
+                    <Filter size={16} />
+                    <span className="font-medium">Active Filters:</span>
+                    {searchTerm && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">Search: "{searchTerm}"</span>}
+                    {selectedRating > 0 && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedRating} Stars</span>}
+                    {selectedProduct !== 'all' && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedProduct}</span>}
+                  </div>
+                  <button
+                    onClick={clearFilters}
+                    className="text-[#A68B69] hover:text-[#8a7456] font-medium text-sm flex items-center gap-1"
+                  >
+                    <X size={14} />
+                    Clear All
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Enhanced Filters */}
+        <div className="bg-white rounded-2xl shadow-lg border border-[#E6E6E6] mb-8">
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Search size={20} className="text-[#CAC8C5]" />
+              <h3 className="text-lg font-semibold text-gray-900">Search & Filter</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#CAC8C5]" size={18} />
+                <input
+                  type="text"
+                  placeholder="Search reviews..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border border-[#E6E6E6] rounded-xl focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all"
+                />
+              </div>
+
+              <select
+                value={selectedRating}
+                onChange={(e) => setSelectedRating(Number(e.target.value))}
+                className="px-4 py-3 border border-[#E6E6E6] rounded-xl focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all"
+              >
+                <option value={0}>All Ratings</option>
+                <option value={5}>⭐⭐⭐⭐⭐ 5 Stars</option>
+                <option value={4}>⭐⭐⭐⭐ 4 Stars</option>
+                <option value={3}>⭐⭐⭐ 3 Stars</option>
+                <option value={2}>⭐⭐ 2 Stars</option>
+                <option value={1}>⭐ 1 Star</option>
+              </select>
+
+              <select
+                value={selectedProduct}
+                onChange={(e) => setSelectedProduct(e.target.value)}
+                className="px-4 py-3 border border-[#E6E6E6] rounded-xl focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all"
+              >
+                <option value="all">All Products</option>
+                {productOptions.filter(opt => opt !== 'all').map((product, index) => (
+                  <option key={index} value={product}>{product}</option>
+                ))}
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-4 py-3 border border-[#E6E6E6] rounded-xl focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all"
+              >
+                <option value="date">Sort by Date</option>
+                <option value="rating">Sort by Rating</option>
+              </select>
             </div>
           </div>
         </div>
 
-        {/* Reviews Grid */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {reviews.map((review) => (
-            <div
-              key={review.id}
-              className={`bg-white rounded-lg shadow-md border-2 transition-all duration-200 ${
-                review.isVisible 
-                  ? 'border-green-200 shadow-green-50' 
-                  : 'border-red-200 shadow-red-50 opacity-75'
-              }`}
-            >
-              {/* Status Indicator */}
-              <div className={`h-1 w-full rounded-t-lg ${
-                review.isVisible ? 'bg-green-400' : 'bg-red-400'
-              }`} />
-              
-              <div className="p-6">
-                {/* User Info */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium text-sm">
-                      {review.avatar}
+        {/* Enhanced Reviews Grid with Pagination */}
+        <div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {paginatedReviews.map((review) => (
+              <div
+                key={review.id}
+                className={`bg-white rounded-2xl shadow-lg border-2 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
+                  review.isVisible
+                    ? 'border-green-200 hover:border-green-300'
+                    : 'border-red-200 hover:border-red-300 opacity-80'
+                }`}
+              >
+                {/* Enhanced Status Indicator */}
+                <div className={`h-2 w-full rounded-t-2xl ${
+                  review.isVisible ? 'bg-green-400' : 'bg-red-400'
+                }`} />
+
+                <div className="p-6">
+                  {/* Enhanced User Info */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-[#A68B69] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                        {review.avatar}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-lg">{review.userName}</h3>
+                        <div className="flex items-center gap-2 text-sm text-[#CAC8C5]">
+                          <Calendar size={14} />
+                          <span>{formatDate(review.date)}</span>
+                          <span>•</span>
+                          <Clock size={14} />
+                          <span>{formatTime(review.date)}</span>
+                        </div>
+                        {review.orderId && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Package size={12} className="text-[#CAC8C5]" />
+                            <span className="text-xs text-[#CAC8C5]">
+                              #{review.orderId.substring(0, 8)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{review.userName}</h3>
-                      <p className="text-sm text-gray-500">{formatDate(review.date)}</p>
-                    </div>
-                  </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
-                    review.isVisible 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {review.isVisible ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                    {review.isVisible ? 'Live' : 'Hidden'}
-                  </div>
-                </div>
-
-                {/* Rating */}
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex gap-1">
-                    {renderStars(review.rating)}
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">
-                    {review.rating}/5
-                  </span>
-                </div>
-
-                {/* Comment */}
-                <p className="text-gray-700 leading-relaxed mb-4 text-sm">
-                  {review.comment}
-                </p>
-
-                {/* Action Buttons */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => toggleVisibility(review.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    <div className={`px-3 py-2 rounded-full text-xs font-bold flex items-center gap-2 ${
                       review.isVisible
-                        ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                        : 'bg-green-100 text-green-800 hover:bg-green-200'
-                    }`}
-                  >
-                    {review.isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                    {review.isVisible ? 'Hide' : 'Show'}
-                  </button>
-                  
-                  <button
-                    onClick={() => deleteReview(review.id)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                    Delete
-                  </button>
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {review.isVisible ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                      {review.isVisible ? 'LIVE' : 'HIDDEN'}
+                    </div>
+                  </div>
+
+                  {/* Enhanced Rating Display */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        {renderStars(review.rating)}
+                      </div>
+                      <span className="text-lg font-bold text-gray-800">
+                        {review.rating}.0
+                      </span>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      review.rating >= 4 ? 'bg-green-100 text-green-800' :
+                      review.rating >= 3 ? 'bg-[#E0DAD6] text-[#A68B69]' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {review.rating >= 4 ? 'Excellent' : review.rating >= 3 ? 'Good' : 'Poor'}
+                    </div>
+                  </div>
+
+                  {/* Enhanced Comment */}
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MessageSquare size={16} className="text-[#CAC8C5]" />
+                      <span className="text-sm font-medium text-[#CAC8C5]">Review</span>
+                    </div>
+                    <div className="bg-[#F9F9F9] rounded-xl p-4 border border-[#E6E6E6]">
+                      <p className="text-gray-800 leading-relaxed">
+                        "{review.comment}"
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Product Info */}
+                  {review.productInfo && (
+                    <div className="mb-6 p-4 bg-[#E0DAD6] rounded-xl border border-[#CAC8C5]">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Package size={16} className="text-[#A68B69]" />
+                        <span className="text-sm font-medium text-[#A68B69]">Product Reviewed</span>
+                      </div>
+                      <p className="font-medium text-gray-900">{review.productInfo.name}</p>
+                      {review.productInfo.size && (
+                        <p className="text-sm text-[#CAC8C5]">Size: {review.productInfo.size}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Enhanced Action Buttons */}
+                  <div className="flex items-center gap-3 pt-4 border-t border-[#E6E6E6]">
+                    <button
+                      onClick={() => toggleVisibility(review.id, review.isVisible)}
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                        review.isVisible
+                          ? 'bg-[#E0DAD6] text-[#A68B69] hover:bg-[#CAC8C5] hover:scale-105'
+                          : 'bg-green-100 text-green-800 hover:bg-green-200 hover:scale-105'
+                      }`}
+                    >
+                      {review.isVisible ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {review.isVisible ? 'Hide' : 'Show'}
+                    </button>
+
+                    {/* Delete button removed as per request */}
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalReviews > REVIEWS_PER_PAGE && (
+            <div className="flex justify-center items-center mt-8 space-x-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all"
+              >
+                Previous
+              </button>
+              {Array.from({ length: pageCount }).map((_, index) => {
+                const pageNumber = index + 1;
+                return (
+                  <button
+                    key={pageNumber}
+                    onClick={() => handlePageChange(pageNumber)}
+                    className={`px-4 py-2 rounded-lg transition-all ${
+                      currentPage === pageNumber
+                        ? 'bg-[#A68B69] text-white font-semibold'
+                        : 'bg-white border border-[#E6E6E6] text-[#A68B69] hover:bg-[#F9F9F9]'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === pageCount}
+                className="px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all"
+              >
+                Next
+              </button>
             </div>
-          ))}
+          )}
         </div>
 
-        {/* Empty State */}
-        {reviews.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Star size={24} className="text-gray-400" />
+        {/* Enhanced Empty State */}
+        {filteredReviews.length === 0 && (
+          <div className="text-center py-16">
+            <div className="bg-white rounded-2xl shadow-lg p-12 max-w-md mx-auto">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Star size={32} className="text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">
+                {hasActiveFilters ? 'No matching reviews found' : 'No reviews yet'}
+              </h3>
+              <p className="text-gray-600 mb-6 leading-relaxed">
+                {hasActiveFilters
+                  ? 'Try adjusting your search criteria to find the reviews you\'re looking for.'
+                  : 'Customer reviews will appear here once they start submitting feedback about your products.'}
+              </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
+                >
+                  Clear All Filters
+                </button>
+              )}
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No reviews yet</h3>
-            <p className="text-gray-500">Customer reviews will appear here when submitted.</p>
           </div>
         )}
       </div>

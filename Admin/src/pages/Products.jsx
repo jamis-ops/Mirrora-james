@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft, Package, Hash, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft, Package, Hash, ChevronLeft, ChevronRight, FileText, Ruler } from "lucide-react";
 import ProductCard from "../components/ProductCard.jsx";
 import { db } from "../../Backend/firebaseConfig.js";
 import { collection, query, where, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
@@ -37,6 +37,9 @@ export default function Products() {
         price: "",
         inventory: "",
         imageUrl: "",
+        description: "",
+        dimensions: "",
+        weight: "",
         categoryId: categoryId || ""
     });
     const [loading, setLoading] = useState(true);
@@ -93,6 +96,9 @@ export default function Products() {
             price: "",
             inventory: "",
             imageUrl: "",
+            description: "",
+            dimensions: "",
+            weight: "",
             categoryId: categoryId
         });
         setImageFile(null);
@@ -101,7 +107,12 @@ export default function Products() {
 
     const openEditModal = (product) => {
         setIsEdit(true);
-        setCurrentProduct(product);
+        setCurrentProduct({
+            ...product,
+            description: product.description || "",
+            dimensions: product.dimensions || "",
+            weight: product.weight || ""
+        });
         setImageFile(null);
         setIsModalOpen(true);
     };
@@ -114,6 +125,9 @@ export default function Products() {
             price: "",
             inventory: "",
             imageUrl: "",
+            description: "",
+            dimensions: "",
+            weight: "",
             categoryId: categoryId
         });
         setImageFile(null);
@@ -176,6 +190,9 @@ export default function Products() {
                 price: parseFloat(currentProduct.price),
                 inventory: parseInt(currentProduct.inventory),
                 imageUrl: imageUrl,
+                description: currentProduct.description || "",
+                dimensions: currentProduct.dimensions || "",
+                weight: currentProduct.weight || "",
                 categoryId: currentProduct.categoryId,
                 createdAt: new Date()
             };
@@ -343,6 +360,51 @@ export default function Products() {
                                     placeholder="Enter product name"
                                     value={currentProduct.name}
                                     onChange={(e) => setCurrentProduct({ ...currentProduct, name: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Product Description */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <FileText size={16} className="text-purple-600" />
+                                    Description
+                                </label>
+                                <textarea
+                                    rows={4}
+                                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all duration-200"
+                                    placeholder="Enter product description (optional)"
+                                    value={currentProduct.description}
+                                    onChange={(e) => setCurrentProduct({ ...currentProduct, description: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Dimensions Input */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <Ruler size={16} className="text-blue-600" />
+                                    Dimensions (H x W)
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all duration-200"
+                                    placeholder="Enter dimensions (e.g., 60.2” x 51.2”)"
+                                    value={currentProduct.dimensions}
+                                    onChange={(e) => setCurrentProduct({ ...currentProduct, dimensions: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Weight Input */}
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <Package size={16} className="text-green-600" />
+                                    Weight
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full p-4 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all duration-200"
+                                    placeholder="Enter weight (e.g., 20.2 pounds)"
+                                    value={currentProduct.weight}
+                                    onChange={(e) => setCurrentProduct({ ...currentProduct, weight: e.target.value })}
                                 />
                             </div>
 

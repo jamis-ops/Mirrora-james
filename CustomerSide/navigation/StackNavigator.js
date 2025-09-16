@@ -28,6 +28,9 @@ import WishlistScreen from "../screens/WishlistScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
+import ReviewScreen from "../screens/ReviewScreen";
+import AboutUsScreen from "../screens/AboutUsScreen";
+
 
 const Stack = createNativeStackNavigator();
 
@@ -87,6 +90,7 @@ export default function StackNavigator() {
         <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
         <Stack.Screen name="OrderConfirmationScreen" component={OrderConfirmationScreen} />
         <Stack.Screen name="MyOrderScreen" component={MyOrderScreen} />
+        <Stack.Screen name="ReviewScreen" component={ReviewScreen} />
         
         {/* Message/Chat Related Screens */}
         <Stack.Screen name="MessageScreen" component={MessageScreen} />
@@ -101,6 +105,7 @@ export default function StackNavigator() {
         <Stack.Screen name="SettingScreen" component={SettingScreen} />
         <Stack.Screen name="MyAddressScreen" component={MyAddressScreen} />
         <Stack.Screen name="Wishlist" component={WishlistScreen} />
+         <Stack.Screen name="AboutUsScreen" component={AboutUsScreen} />
         
       </Stack.Navigator>
 
@@ -136,5 +141,5 @@ const styles = StyleSheet.create({
   toastMessage: {
     fontSize: 13,
     color: "#6B7280",
-  },
+  },  
 });

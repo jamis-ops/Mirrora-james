@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { db, auth } from '../Backend/firebaseConfig';
-import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
@@ -9,8 +9,9 @@ const MyOrderScreen = () => {
     const navigation = useNavigation();
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState([]);
-    // The initial active tab is set to the first status in the new list
     const [activeTab, setActiveTab] = useState('pending');
+    const [reviews, setReviews] = useState([]);
+    const [loadingReviews, setLoadingReviews] = useState(true);
 
     useEffect(() => {
         const fetchOrders = () => {
@@ -25,14 +26,12 @@ const MyOrderScreen = () => {
             const userId = user.uid;
             console.log("Fetching orders for user:", userId);
 
-            // This query fetches ALL orders for the user in real-time
             const q = query(
                 collection(db, 'orders'),
                 where('userID', '==', userId),
                 orderBy('createdAt', 'desc')
             );
 
-            // onSnapshot sets up a real-time listener
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 console.log("Query snapshot size:", querySnapshot.size);
 
@@ -51,7 +50,6 @@ const MyOrderScreen = () => {
                         id: doc.id,
                         createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
                         items: orderData.items || [],
-                        // This is the key fix: converting the status to lowercase to avoid case-sensitivity issues
                         status: orderData.status ? orderData.status.toLowerCase() : 'unknown',
                         total: orderData.total || 0,
                         userId: orderData.userID,
@@ -66,17 +64,47 @@ const MyOrderScreen = () => {
                 console.error("Error fetching orders:", error);
                 setIsLoading(false);
                 Alert.alert("Error", "Failed to fetch orders. Please try again.");
-                return; // Add this line to prevent further processing on error
+                return;
             });
 
             return unsubscribe;
         };
 
-        const unsubscribe = fetchOrders();
+        const fetchUserReviews = async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            try {
+                const reviewsQuery = query(
+                    collection(db, 'reviews'),
+                    where('userId', '==', user.uid)
+                );
+                const querySnapshot = await getDocs(reviewsQuery);
+                
+                const userReviews = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    userReviews.push({
+                        id: doc.id,
+                        orderId: data.orderId,
+                        productId: data.productInfo?.id
+                    });
+                });
+                
+                setReviews(userReviews);
+            } catch (error) {
+                console.error("Error fetching user reviews:", error);
+            } finally {
+                setLoadingReviews(false);
+            }
+        };
+
+        const unsubscribeOrders = fetchOrders();
+        fetchUserReviews();
         
         return () => {
-            if (unsubscribe) {
-                unsubscribe();
+            if (unsubscribeOrders) {
+                unsubscribeOrders();
             }
         };
     }, []);
@@ -113,7 +141,6 @@ const MyOrderScreen = () => {
         }
     };
     
-    // Function to handle deleting a cancelled order
     const handleDeleteOrder = async (orderId) => {
         try {
             Alert.alert(
@@ -140,9 +167,26 @@ const MyOrderScreen = () => {
         }
     };
     
-    // New function to handle the review button press
-    const handleReview = (orderId, item) => {
-        navigation.navigate('ReviewScreen', { orderId, item });
+    // Check if user has already reviewed this order
+    const hasUserReviewedOrder = (orderId) => {
+        return reviews.some(review => review.orderId === orderId);
+    };
+
+    // Check if user has reviewed any product in this order
+    const hasUserReviewedOrderProducts = (order) => {
+        if (!order.items || !Array.isArray(order.items)) return false;
+        
+        return order.items.some(item => 
+            reviews.some(review => review.productId === item.id)
+        );
+    };
+
+    const handleReview = (order) => {
+        navigation.navigate('ReviewScreen', { 
+            orderId: order.id,
+            items: order.items,
+            orderData: order 
+        });
     };
 
     const formatDate = (date) => {
@@ -168,7 +212,7 @@ const MyOrderScreen = () => {
         }
     };
 
-    if (isLoading) {
+    if (isLoading || loadingReviews) {
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#A68B69" />
@@ -177,7 +221,6 @@ const MyOrderScreen = () => {
         );
     }
 
-    // This is the line that filters the orders based on the active tab
     const filteredOrders = orders.filter(order => order.status === activeTab);
 
     return (
@@ -201,7 +244,6 @@ const MyOrderScreen = () => {
                             onPress={() => handleTabChange(status)}
                         >
                             <Text style={[styles.tabText, activeTab === status && styles.activeTabText]}>
-                                {/* Capitalize the first letter for display */}
                                 {status.charAt(0).toUpperCase() + status.slice(1)}
                             </Text>
                         </TouchableOpacity>
@@ -209,7 +251,6 @@ const MyOrderScreen = () => {
                 </View>
             </ScrollView>
 
-            {/* Conditional rendering for displaying orders or a message */}
             {filteredOrders.length === 0 ? (
                 <View style={styles.noOrdersContainer}>
                     <Ionicons name="document-text-outline" size={80} color="#ccc" />
@@ -217,79 +258,87 @@ const MyOrderScreen = () => {
                     <Text style={styles.noOrdersSubtext}>You don't have any {activeTab.toLowerCase()} orders yet.</Text>
                 </View>
             ) : (
-                filteredOrders.map((order) => (
-                    <View key={order.id} style={styles.orderCard}>
-                        <View style={styles.orderHeader}>
-                            <View style={styles.orderHeaderLeft}>
-                                <Text style={styles.orderId}>Order #{order.id.substring(0, 8)}</Text>
-                                <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
-                            </View>
-                            <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
-                                {/* Capitalize the first letter for display */}
-                                {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                            </Text>
-                        </View>
-                        
-                        {order.items && Array.isArray(order.items) && order.items.map((item, idx) => (
-                            <View key={idx} style={styles.orderItem}>
-                                <Image 
-                                    source={{ uri: item.imageUrl }} 
-                                    style={styles.productImage}
-                                    defaultSource={require('../assets/placeholder.png')}
-                                />
-                                <View style={styles.itemDetails}>
-                                    <Text style={styles.itemName}>{item.name}</Text>
-                                    {item.size && <Text style={styles.itemSize}>Size: {item.size}</Text>}
-                                    <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
+                filteredOrders.map((order) => {
+                    const hasReviewed = hasUserReviewedOrder(order.id) || hasUserReviewedOrderProducts(order);
+                    
+                    return (
+                        <View key={order.id} style={styles.orderCard}>
+                            <View style={styles.orderHeader}>
+                                <View style={styles.orderHeaderLeft}>
+                                    <Text style={styles.orderId}>Order #{order.id.substring(0, 8)}</Text>
+                                    <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
                                 </View>
-                                <Text style={styles.itemPrice}>₱{item.price.toLocaleString()}</Text>
-                            </View>
-                        ))}
-                        
-                        <View style={styles.orderFooter}>
-                            <View style={styles.totalContainer}>
-                                <Text style={styles.totalLabel}>Amount Paid (50%):</Text>
-                                <Text style={styles.totalText}>₱{(order.total * 0.5).toLocaleString()}</Text>
+                                <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
+                                    {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                                </Text>
                             </View>
                             
-                            {/* Conditional rendering for buttons */}
-                            {order.status === 'pending' && (
-                                <TouchableOpacity 
-                                    onPress={() => handleCancelOrder(order.id)} 
-                                    style={styles.cancelButton}
-                                >
-                                    <Text style={styles.cancelButtonText}>Cancel Order</Text>
-                                </TouchableOpacity>
-                            )}
+                            {order.items && Array.isArray(order.items) && order.items.map((item, idx) => (
+                                <View key={idx} style={styles.orderItem}>
+                                    <Image 
+                                        source={{ uri: item.imageUrl }} 
+                                        style={styles.productImage}
+                                        defaultSource={require('../assets/placeholder.png')}
+                                    />
+                                    <View style={styles.itemDetails}>
+                                        <Text style={styles.itemName}>{item.name}</Text>
+                                        {item.size && <Text style={styles.itemSize}>Size: {item.size}</Text>}
+                                        <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
+                                    </View>
+                                    <Text style={styles.itemPrice}>₱{item.price.toLocaleString()}</Text>
+                                </View>
+                            ))}
                             
-                            {/* New button for writing a review */}
-                            {order.status === 'delivered' && (
-                                <TouchableOpacity 
-                                    onPress={() => handleReview(order.id, order.items[0])} 
-                                    style={styles.reviewButton}
-                                >
-                                    <Text style={styles.reviewButtonText}>Write a Review</Text>
-                                </TouchableOpacity>
-                            )}
+                            <View style={styles.orderFooter}>
+                                <View style={styles.totalContainer}>
+                                    <Text style={styles.totalLabel}>Amount Paid (50%):</Text>
+                                    <Text style={styles.totalText}>₱{(order.total * 0.5).toLocaleString()}</Text>
+                                </View>
+                                
+                                {order.status === 'pending' && (
+                                    <TouchableOpacity 
+                                        onPress={() => handleCancelOrder(order.id)} 
+                                        style={styles.cancelButton}
+                                    >
+                                        <Text style={styles.cancelButtonText}>Cancel Order</Text>
+                                    </TouchableOpacity>
+                                )}
+                                
+                                {/* Review button - only show if delivered and not reviewed */}
+                                {order.status === 'delivered' && !hasReviewed && (
+                                    <TouchableOpacity 
+                                        onPress={() => handleReview(order)} 
+                                        style={styles.reviewButton}
+                                    >
+                                        <Text style={styles.reviewButtonText}>Write a Review</Text>
+                                    </TouchableOpacity>
+                                )}
 
-                            {/* New button to delete cancelled orders */}
-                            {order.status === 'cancelled' && (
-                                <TouchableOpacity 
-                                    onPress={() => handleDeleteOrder(order.id)} 
-                                    style={[styles.cancelButton, styles.deleteButton]}
-                                >
-                                    <Text style={styles.cancelButtonText}>Remove Order</Text>
-                                </TouchableOpacity>
-                            )}
+                                {/* Show reviewed status if already reviewed */}
+                                {order.status === 'delivered' && hasReviewed && (
+                                    <View style={styles.reviewedContainer}>
+                                        <Ionicons name="checkmark-circle" size={20} color="#4caf50" />
+                                        <Text style={styles.reviewedText}>Reviewed</Text>
+                                    </View>
+                                )}
+
+                                {order.status === 'cancelled' && (
+                                    <TouchableOpacity 
+                                        onPress={() => handleDeleteOrder(order.id)} 
+                                        style={[styles.cancelButton, styles.deleteButton]}
+                                    >
+                                        <Text style={styles.cancelButtonText}>Remove Order</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         </View>
-                    </View>
-                ))
+                    );
+                })
             )}
         </ScrollView>
     );
 };
 
-// The styles remain the same
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -313,7 +362,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#A68B69',
         paddingVertical: 20,
         paddingHorizontal: 15,
-        paddingTop: 50, // Account for status bar
+        paddingTop: 50,
     },
     backButton: {
         padding: 5,
@@ -473,7 +522,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
     deleteButton: {
-        backgroundColor: '#d32f2f', // A darker red for deletion
+        backgroundColor: '#d32f2f',
         marginTop: 10,
     },
     reviewButton: {
@@ -488,6 +537,22 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
         fontSize: 16,
+    },
+    reviewedContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f0f9f0',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        marginTop: 10,
+    },
+    reviewedText: {
+        color: '#4caf50',
+        fontWeight: 'bold',
+        fontSize: 16,
+        marginLeft: 8,
     },
     noOrdersContainer: {
         flex: 1,

@@ -13,9 +13,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  writeBatch,
   serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
@@ -137,32 +135,11 @@ export default function CartScreen() {
       return;
     }
 
-    try {
-      // create order under orders/{uid}/orders/{orderId}
-      const ordersCollection = collection(db, "orders", user.uid, "orders");
-      const orderRef = collection(db, "orders"); // root collection
-      await setDoc(doc(orderRef), {
-        items: selectedItems,
-        total: totalAmount,
-        status: "Pending",
-        createdAt: serverTimestamp(),
-        userID: user.uid,  // important!
-      });
-
-      // delete only selected items from cart using batch
-      const batch = writeBatch(db);
-      selectedItems.forEach((it) => {
-        const itemRef = doc(db, "carts", user.uid, "items", it.id);
-        batch.delete(itemRef);
-      });
-      await batch.commit();
-
-      Alert.alert("Order placed", "Your order has been created.");
-      navigation.navigate("CheckoutScreen", { orderId: orderRef.id });
-    } catch (err) {
-      console.error("checkout error:", err);
-      Alert.alert("Error", "Could not complete checkout");
-    }
+    // FIXED: Pass the selected items and total amount directly to CheckoutScreen
+    navigation.navigate("CheckoutScreen", { 
+      selectedItems: selectedItems,
+      totalAmount: totalAmount 
+    });
   };
 
   const renderCartItem = ({ item }) => {
@@ -175,12 +152,11 @@ export default function CartScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* This is the corrected line */}
         <Image source={{ uri: item.imageUrl || 'https://via.placeholder.com/80' }} style={styles.cartItemImage} />
 
         <View style={styles.cartItemDetails}>
           <Text style={styles.cartItemName}>{item.name}</Text>
-          <Text style={styles.cartItemSize}>{/* optional size */}</Text>
+          <Text style={styles.cartItemSize}>{item.size || 'Standard'}</Text>
           <Text style={styles.cartItemPrice}>₱ {Number(item.price).toLocaleString()}</Text>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
@@ -238,7 +214,7 @@ export default function CartScreen() {
       
       <TouchableOpacity 
         style={styles.startShoppingButton}
-        onPress={() => navigation.navigate('Home')} // Adjust navigation as needed
+        onPress={() => navigation.navigate('Home')}
       >
         <Text style={styles.startShoppingButtonText}>Start Shopping</Text>
         <Icon name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
@@ -246,7 +222,7 @@ export default function CartScreen() {
       
       <TouchableOpacity 
         style={styles.browseButton}
-        onPress={() => navigation.navigate('Categories')} // Adjust navigation as needed
+        onPress={() => navigation.navigate('Categories')}
       >
         <Text style={styles.browseButtonText}>Browse Categories</Text>
       </TouchableOpacity>
@@ -263,7 +239,6 @@ export default function CartScreen() {
 
   return (
     <View style={styles.container}>
-      {/* The top navigation bar is controlled by your StackNavigator.js */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="chevron-left" size={28} color="#000" />
@@ -310,148 +285,209 @@ export default function CartScreen() {
   );
 }
 
-/* Enhanced styles with empty cart design */
+// Add the missing styles
 const styles = StyleSheet.create({
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { flex: 1, backgroundColor: '#F9F9F9' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+  container: {
+    flex: 1,
+    backgroundColor: '#F9F9F9',
   },
-  headerTitle: { fontFamily: 'LeagueSpartan_700Bold', fontSize: 22, color: '#000' },
-  cartList: { paddingTop: 10, paddingHorizontal: 20, paddingBottom: 120 },
-  cartItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  checkboxContainer: { paddingRight: 10 },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#D9D9D9',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
   },
-  checkedCheckbox: { backgroundColor: '#A68B69', borderColor: '#A68B69' },
-  cartItemImage: { width: 80, height: 80, borderRadius: 10, marginRight: 15, resizeMode: 'cover' },
-  cartItemDetails: { flex: 1 },
-  cartItemName: { fontFamily: 'Montserrat_600SemiBold', fontSize: 16, color: '#000' },
-  cartItemSize: { fontFamily: 'Montserrat_400Regular', fontSize: 12, color: '#777' },
-  cartItemPrice: { fontFamily: 'Montserrat_600SemiBold', fontSize: 16, color: '#A68B69', marginTop: 5 },
-  quantityButton: { padding: 8 },
-  quantityText: { paddingHorizontal: 12, fontFamily: 'Montserrat_600SemiBold' },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    elevation: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
   },
-  selectAllContainer: { flexDirection: 'row', alignItems: 'center' },
-  selectAllText: { fontFamily: 'Montserrat_400Regular', fontSize: 14, color: '#000', marginLeft: 8 },
-  totalContainer: { flexDirection: 'row', alignItems: 'center' },
-  totalAmountText: { fontFamily: 'LeagueSpartan_700Bold', fontSize: 18, color: '#000', marginRight: 15 },
-  checkoutButton: { backgroundColor: '#A68B69', borderRadius: 25, paddingVertical: 12, paddingHorizontal: 25 },
-  checkoutButtonText: { fontFamily: 'Montserrat_600SemiBold', fontSize: 14, color: '#fff' },
-  disabledButton: { backgroundColor: '#D9D9D9' },
-  
-  // Enhanced Empty Cart Styles
+  headerTitle: {
+    fontFamily: 'LeagueSpartan_700Bold',
+    fontSize: 20,
+    color: '#000',
+  },
+  cartList: {
+    paddingTop: 10,
+    flexGrow: 1,
+  },
+  cartItemContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginHorizontal: 15,
+    marginVertical: 5,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  checkboxContainer: {
+    marginRight: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#DDD',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkedCheckbox: {
+    backgroundColor: '#A68B69',
+    borderColor: '#A68B69',
+  },
+  cartItemImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 15,
+  },
+  cartItemDetails: {
+    flex: 1,
+  },
+  cartItemName: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 16,
+    color: '#000',
+  },
+  cartItemSize: {
+    fontFamily: 'Montserrat_400Regular',
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  cartItemPrice: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 16,
+    color: '#A68B69',
+    marginTop: 5,
+  },
+  quantityButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F0F0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityText: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 16,
+    marginHorizontal: 15,
+    minWidth: 20,
+    textAlign: 'center',
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  selectAllContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectAllText: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  totalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  totalAmountText: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 18,
+    color: '#A68B69',
+    marginRight: 15,
+  },
+  checkoutButton: {
+    backgroundColor: '#A68B69',
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  disabledButton: {
+    backgroundColor: '#CCC',
+  },
+  checkoutButtonText: {
+    fontFamily: 'Montserrat_600SemiBold',
+    fontSize: 16,
+    color: '#fff',
+  },
+  // Empty cart styles
   emptyCartContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 40,
-    paddingVertical: 60,
-    backgroundColor: '#F9F9F9',
+    paddingTop: 60,
   },
   emptyCartIconContainer: {
     position: 'relative',
-    marginBottom: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 30,
   },
   cartIconBackground: {
     width: 120,
     height: 120,
-    backgroundColor: '#fff',
     borderRadius: 60,
+    backgroundColor: 'rgba(166, 139, 105, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#A68B69',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: '#F0F0F0',
   },
   decorativeCircle1: {
     position: 'absolute',
     width: 20,
     height: 20,
-    backgroundColor: '#FFD93D',
     borderRadius: 10,
+    backgroundColor: 'rgba(166, 139, 105, 0.3)',
     top: -10,
-    right: -10,
+    right: 10,
   },
   decorativeCircle2: {
     position: 'absolute',
     width: 15,
     height: 15,
-    backgroundColor: '#FF6B6B',
     borderRadius: 7.5,
-    bottom: -5,
+    backgroundColor: 'rgba(166, 139, 105, 0.4)',
+    bottom: 10,
     left: -5,
   },
   decorativeCircle3: {
     position: 'absolute',
     width: 12,
     height: 12,
-    backgroundColor: '#4ECDC4',
     borderRadius: 6,
+    backgroundColor: 'rgba(166, 139, 105, 0.2)',
     top: 20,
-    left: -15,
+    left: -10,
   },
   emptyCartTitle: {
     fontFamily: 'LeagueSpartan_700Bold',
-    fontSize: 28,
-    color: '#2C2C2C',
+    fontSize: 24,
+    color: '#333',
     marginBottom: 10,
-    textAlign: 'center',
   },
   emptyCartSubtitle: {
     fontFamily: 'Montserrat_400Regular',
     fontSize: 16,
-    color: '#777',
+    color: '#666',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
     marginBottom: 30,
   },
   emptyCartSuggestions: {
@@ -462,35 +498,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   suggestionText: {
     fontFamily: 'Montserrat_400Regular',
     fontSize: 14,
-    color: '#555',
+    color: '#666',
     marginLeft: 8,
   },
   startShoppingButton: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#A68B69',
     paddingHorizontal: 30,
     paddingVertical: 15,
-    borderRadius: 30,
+    borderRadius: 25,
+    alignItems: 'center',
     marginBottom: 15,
-    shadowColor: '#A68B69',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   startShoppingButtonText: {
     fontFamily: 'Montserrat_600SemiBold',
@@ -499,15 +521,11 @@ const styles = StyleSheet.create({
   },
   browseButton: {
     paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: '#A68B69',
-    backgroundColor: 'transparent',
+    paddingVertical: 15,
   },
   browseButtonText: {
     fontFamily: 'Montserrat_600SemiBold',
-    fontSize: 14,
+    fontSize: 16,
     color: '#A68B69',
   },
 });

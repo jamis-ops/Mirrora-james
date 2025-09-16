@@ -15,7 +15,6 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
 
-
 // --- Firebase Imports ---
 import { auth, db } from '../Backend/firebaseConfig';
 import { signOut } from 'firebase/auth';
@@ -76,20 +75,15 @@ export default function ProfileScreen() {
             console.error('Sign out error', error);
         }
     };
-    // Inside ProfileScreen.js
 
-// At the top of ProfileScreen
-const handleNavigation = (screenName) => {
-  // Use getParent() to access StackNavigator from TabNavigator
-  const parentNav = navigation.getParent();
-  if (parentNav) {
-    parentNav.navigate(screenName);
-  } else {
-    console.warn("Parent navigator not found!");
-  }
-};
-
-    
+    const handleNavigation = (screenName) => {
+        const parentNav = navigation.getParent();
+        if (parentNav) {
+            parentNav.navigate(screenName);
+        } else {
+            console.warn("Parent navigator not found!");
+        }
+    };
 
     const MenuItem = ({ icon, title, onPress, isLast = false }) => (
         <TouchableOpacity style={[styles.menuItem, isLast && styles.lastMenuItem]} onPress={onPress}>
@@ -130,29 +124,33 @@ const handleNavigation = (screenName) => {
 
                 {/* Menu Items Section */}
                 <View style={styles.menuSection}>
-  <MenuItem
-    icon="account-outline"
-    title="Edit Profile"
-    onPress={() => handleNavigation('CompleteProfile')}
-  />
-  <MenuItem
-    icon="archive-outline"
-    title="My Order"
-    onPress={() => handleNavigation('MyOrderScreen')}
-  />
-  <MenuItem
-    icon="map-marker-outline"
-    title="Address"
-    onPress={() => handleNavigation('MyAddressScreen')}
-  />
-  <MenuItem
-    icon="cog-outline"
-    title="Setting"
-    onPress={() => handleNavigation('SettingScreen')}
-    isLast={true}
-  />
-</View>
-
+                    <MenuItem
+                        icon="account-outline"
+                        title="Edit Profile"
+                        onPress={() => handleNavigation('CompleteProfile')}
+                    />
+                    <MenuItem
+                        icon="archive-outline"
+                        title="My Order"
+                        onPress={() => handleNavigation('MyOrderScreen')}
+                    />
+                    <MenuItem
+                        icon="map-marker-outline"
+                        title="Address"
+                        onPress={() => handleNavigation('MyAddressScreen')}
+                    />
+                    <MenuItem
+                        icon="cog-outline"
+                        title="Setting"
+                        onPress={() => handleNavigation('SettingScreen')}
+                    />
+                    <MenuItem
+                        icon="information-outline"
+                        title="About Us"
+                        onPress={() => handleNavigation('AboutUsScreen')}
+                        isLast={true}
+                    />
+                </View>
 
                 {/* Logout Button */}
                 <TouchableOpacity style={styles.logoutButton} onPress={() => setShowLogoutModal(true)}>
@@ -375,4 +373,4 @@ const styles = StyleSheet.create({
         color: 'white',
         textAlign: 'center',
     },
-});
+}); 

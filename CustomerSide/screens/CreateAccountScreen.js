@@ -61,12 +61,29 @@ export default function CreateAccountScreen({ navigation }) {
     // New state to hold password validation messages
     const [passwordValidationErrors, setPasswordValidationErrors] = useState([]);
 
+    // New state for Terms and Conditions modal
+    const [termsModalVisible, setTermsModalVisible] = useState(false);
+
     const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold, Montserrat_700Bold });
 
     if (!leagueSpartanLoaded || !montserratLoaded) {
         return null;
     }
+
+    // Terms and Conditions content
+    const termsContent = [
+        { title: "1. Introduction and Acceptance", text: "Welcome to Mirrora Philippines! These Terms and Conditions govern your use of our e-commerce website and your purchase of products from us. By using our site or placing an order, you agree to be bound by these terms. If you do not accept these terms, please do not use our website." },
+        { title: "2. Products and Services", text: "Product Descriptions: We strive for accuracy in all product descriptions, including materials, dimensions, and finishes. However, please note that slight variations in color and texture may occur due to natural materials and monitor settings. Mirrora Philippines reserves the right to modify product specifications and prices at any time without prior notice.\n\nFor custom-made products, the design and specifications will be finalized and approved by the client before production begins. A detailed invoice and a design mock-up will be provided for your review. Any changes requested after final approval may result in additional charges and delays." },
+        { title: "3. Pricing and Payment", text: " All prices listed are in Philippine Pesos (PHP) and are inclusive of Value-Added Tax (VAT), unless otherwise stated. Prices do not include delivery and installation fees, which will be calculated and added at checkout.\n\nWe require a 50% down payment for all custom orders before production begins. The remaining 50% must be paid upon delivery or before installation. For pre-designed, ready-to-ship items, full payment is required at the time of purchase.\n\n For a smoother transaction, we require a 50% down payment via bank transfer. The remaining 50% will be collected in cash upon delivery of your order.. Details for these methods will be provided during the checkout process." },
+        { title: "4. Order Processing and Fulfillment", text: "Order Confirmation: An order is considered confirmed only after we have received the required payment and sent you a confirmation email. This email will include your order number, a summary of your items, and an estimated lead time.\n\n Our typical lead time for custom glass and mirror products is 10 to 15 business days from the date of down payment. This may vary based on the complexity and volume of the order. We will inform you of any potential delays." },
+        { title: "5. Delivery and Installation", text: " We provide delivery and installation services within Cebu and selected provincial areas. Delivery fees are calculated based on your location and the size of the items.\n\n It is your responsibility to ensure that the delivery address and contact information are accurate. You or a designated representative must be present to receive the items.\n\n For installations, please ensure the site is prepared and accessible. Any unforeseen site conditions that require additional work, such as dismantling existing structures or extra materials, may incur additional charges.\n\n You must inspect all items upon delivery. If you find any damage, scratches, or manufacturing defects, you must report them immediately to our delivery personnel and note them on the delivery receipt. We will not be responsible for damages reported after our personnel have left the delivery site." },
+        { title: "6. Returns and Refunds", text: " If a product is verified as damaged upon delivery, we will replace it at no additional cost or issue a full refund, at our discretion.\n\n All sales of custom-made products are final. We cannot accept returns or provide refunds for these items unless they are defective or damaged during delivery, as per the inspection clause above.\n\n If you wish to cancel a custom order after the down payment has been made but before production has started, a 25% cancellation fee of the total project cost will be charged to cover design and administrative work. Once production has started, no cancellations will be accepted and the down payment will be forfeited." },
+        { title: "7. Warranties and Guarantees", text: " We provide a one-year warranty on our installation workmanship against defects. This warranty does not cover damages caused by misuse, improper cleaning, accidental breakage, or natural wear and tear.\n\n We guarantee that our products are made from high-quality materials as specified. The warranty on the glass and mirror itself covers manufacturing defects and is valid for one year from the date of purchase." },
+        { title: "8. Intellectual Property", text: "All designs, logos, images, and content on our website are the exclusive property of Mirrora Philippines. Any unauthorized use, reproduction, or distribution is strictly prohibited and subject to legal action." },
+        { title: "9. Governing Law", text: "These Terms and Conditions are governed by the laws of the Republic of the Philippines. Any disputes will be resolved through amicable negotiation. If a resolution cannot be reached, the dispute will be submitted to the exclusive jurisdiction of the courts of Cebu City." },
+        { title: "10. Contact Us", text: "For any inquiries regarding these terms, please contact our customer service team through the contact details provided on our application." }
+    ];
 
     // Custom modal component for all messages (success, warning, error)
     const MessageModal = () => (
@@ -93,6 +110,49 @@ export default function CreateAccountScreen({ navigation }) {
                         }}
                     >
                         <Text style={styles.modalButtonText}>OK</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+
+    // Terms and Conditions Modal
+    const TermsModal = () => (
+        <Modal
+            animationType="slide"
+            transparent={true}
+            visible={termsModalVisible}
+            onRequestClose={() => setTermsModalVisible(false)}
+        >
+            <View style={styles.termsModalOverlay}>
+                <View style={styles.termsModalContainer}>
+                    <View style={styles.termsModalHeader}>
+                        <Text style={styles.termsModalTitle}>Terms and Conditions</Text>
+                        <TouchableOpacity 
+                            onPress={() => setTermsModalVisible(false)}
+                            style={styles.termsModalCloseButton}
+                        >
+                            <Icon name="close" size={24} color="#000" />
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <ScrollView style={styles.termsModalContent}>
+                        {termsContent.map((section, index) => (
+                            <View key={index} style={styles.termsSection}>
+                                <Text style={styles.termsSectionTitle}>{section.title}</Text>
+                                <Text style={styles.termsSectionText}>{section.text}</Text>
+                            </View>
+                        ))}
+                    </ScrollView>
+                    
+                    <TouchableOpacity 
+                        style={styles.termsModalAgreeButton}
+                        onPress={() => {
+                            setTermsModalVisible(false);
+                            setChecked(true);
+                        }}
+                    >
+                        <Text style={styles.termsModalAgreeButtonText}>I Agree</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -521,7 +581,12 @@ export default function CreateAccountScreen({ navigation }) {
                             />
                             <Text style={styles.agreeWithText}>
                                 By creating an account, you agree to the{' '}
-                                <Text style={styles.termsAndConditionText}>Terms & Conditions</Text>
+                                <Text 
+                                    style={styles.termsAndConditionText}
+                                    onPress={() => setTermsModalVisible(true)}
+                                >
+                                    Terms & Conditions
+                                </Text>
                             </Text>
                         </View>
                     </>
@@ -587,6 +652,7 @@ export default function CreateAccountScreen({ navigation }) {
                 </View>
             </ImageBackground>
             <MessageModal />
+            <TermsModal />
             <GenderDropdownModal />
             <DateTimePickerModal
                 isVisible={showDatePicker}
@@ -903,6 +969,69 @@ const styles = StyleSheet.create({
         elevation: 2,
     },
     modalButtonText: {
+        color: '#fff',
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 16,
+    },
+    // Terms and Conditions Modal Styles
+    termsModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    termsModalContainer: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        width: '100%',
+        maxWidth: 500,
+        maxHeight: '80%',
+        overflow: 'hidden',
+    },
+    termsModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E0E0E0',
+    },
+    termsModalTitle: {
+        fontSize: 20,
+        fontFamily: 'Montserrat_700Bold',
+        color: '#000',
+    },
+    termsModalCloseButton: {
+        padding: 5,
+    },
+    termsModalContent: {
+        padding: 20,
+        maxHeight: '70%',
+    },
+    termsSection: {
+        marginBottom: 20,
+    },
+    termsSectionTitle: {
+        fontSize: 16,
+        fontFamily: 'Montserrat_600SemiBold',
+        color: '#A68B69',
+        marginBottom: 10,
+    },
+    termsSectionText: {
+        fontSize: 14,
+        fontFamily: 'Montserrat_400Regular',
+        color: '#555',
+        lineHeight: 20,
+    },
+    termsModalAgreeButton: {
+        backgroundColor: '#A68B69',
+        padding: 15,
+        alignItems: 'center',
+        margin: 20,
+        borderRadius: 10,
+    },
+    termsModalAgreeButtonText: {
         color: '#fff',
         fontFamily: 'Montserrat_600SemiBold',
         fontSize: 16,

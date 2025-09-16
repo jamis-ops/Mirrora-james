@@ -12,12 +12,13 @@ import {
     Modal,
     Dimensions,
     Platform,
-    StatusBar
+    StatusBar,
+    TextInput
 } from 'react-native';
 import { useNavigation, useRoute } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db, auth } from '../Backend/firebaseConfig';
-import { collection, addDoc, Timestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, writeBatch, doc, getDocs } from 'firebase/firestore';
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -44,6 +45,50 @@ export default function CheckoutScreen() {
     const [referenceNumber, setReferenceNumber] = useState('');
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
+    useEffect(() => {
+    const fetchCart = async () => {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        try {
+            const snapshot = await getDocs(collection(db, "carts", user.uid, "items"));
+            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            setCartItems(items);
+            setSubtotal(
+                items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)
+            );
+        } catch (error) {
+            console.error("Error fetching cart: ", error);
+        }
+    };
+
+    // Case 1: When navigating with selectedItems + totalAmount (from params)
+    if (selectedItems && totalAmount) {
+        setCartItems(selectedItems);
+        setSubtotal(totalAmount);
+    } else {
+        // Case 2: Fallback to fetching directly from Firestore
+        fetchCart();
+    }
+
+    // Animations
+    Animated.parallel([
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 600,
+            useNativeDriver: true,
+        }),
+    ]).start();
+
+    // Generate initial reference number
+    generateReferenceNumber();
+}, [selectedItems, totalAmount]);
     // Animation refs
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(50)).current;
@@ -123,6 +168,16 @@ export default function CheckoutScreen() {
             Alert.alert("Payment Method Required", "Please select a bank account for payment.");
             return;
         }
+        if (!selectedBank) {
+            Alert.alert("Payment Method Required", "Please select a bank account for payment.");
+            return;
+        }
+
+        if (!referenceNumber.trim()) {
+            Alert.alert("Reference Number Required", "Please enter the reference number from your payment.");
+            return;
+        }
+
 
         animateButton();
         setIsPlacingOrder(true);
@@ -409,14 +464,16 @@ export default function CheckoutScreen() {
 
                     {/* Reference Number */}
                     <View style={styles.referenceContainer}>
-                        <Text style={styles.referenceLabel}>Reference Number</Text>
-                        <View style={styles.referenceNumberContainer}>
-                            <Text style={styles.referenceNumber}>{referenceNumber}</Text>
-                            <TouchableOpacity onPress={generateReferenceNumber}>
-                                <Icon name="refresh" size={20} color="#A68B69" />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+                    <Text style={styles.referenceLabel}>Reference Number</Text>
+                    <TextInput
+                        style={styles.referenceInput}
+                        placeholder="Enter reference number after payment"
+                        placeholderTextColor="#999"
+                        value={referenceNumber}
+                        onChangeText={setReferenceNumber}
+                    />
+                </View>
+
 
                     <View style={styles.divider} />
 
@@ -1003,4 +1060,14 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#fff',
     },
+    referenceInput: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 16,
+    marginTop: 8,
+    color: '#333',
+},
+
 });
