@@ -1,11 +1,9 @@
-// screens/ChatScreen.js - Complete with Customization Support
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   SafeAreaView,
   FlatList,
   KeyboardAvoidingView,
@@ -18,27 +16,25 @@ import {
   Modal,
   Dimensions,
   ScrollView,
+  StyleSheet,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-// Firebase imports
-import { db, auth, storage } from '../Backend/firebaseConfig.js';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  onSnapshot, 
-  orderBy, 
-  serverTimestamp, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  deleteDoc 
+import { db, auth, appId } from '../Backend/firebaseConfig.js';
+import {
+  collection,
+  addDoc,
+  query,
+  onSnapshot,
+  orderBy,
+  serverTimestamp,
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -59,9 +55,6 @@ const ChatScreen = () => {
   const [showCustomizationModal, setShowCustomizationModal] = useState(false);
   const [selectedCustomization, setSelectedCustomization] = useState(null);
   const flatListRef = useRef();
-
-  // App ID constant
-  const appId = 'mirrora-app';
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
@@ -92,6 +85,9 @@ const ChatScreen = () => {
           }
         } catch (error) {
           console.error("Error fetching user data: ", error);
+          if (error.code === 'resource-exhausted') {
+            Alert.alert('Quota Exceeded', 'Firestore quota limit reached. User data may not display correctly.');
+          }
           setUserName('User');
         }
       } else {
@@ -105,7 +101,7 @@ const ChatScreen = () => {
   const sendWelcomeMessage = async () => {
     if (!user) return;
     const messagesRef = collection(db, `artifacts/${appId}/public/data/chats/${user.uid}/messages`);
-    
+
     try {
       setIsTyping(true);
       setTimeout(async () => {
@@ -113,13 +109,16 @@ const ChatScreen = () => {
           await addDoc(messagesRef, {
             text: 'Hello! Welcome to Mirrora 🪞 How can I help you find the perfect mirror today?',
             timestamp: serverTimestamp(),
-            senderId: 'mirrora-admin', 
+            senderId: 'mirrora-admin',
             senderName: 'Mirrora Support',
             senderAvatar: 'MS',
             messageType: 'text',
           });
         } catch (error) {
           console.error("Error sending welcome message: ", error);
+          if (error.code === 'resource-exhausted') {
+            Alert.alert('Quota Exceeded', 'Unable to send welcome message due to Firestore quota limits.');
+          }
         }
         setIsTyping(false);
       }, 1500);
@@ -138,223 +137,222 @@ const ChatScreen = () => {
         if (querySnapshot.empty) {
           sendWelcomeMessage();
         }
-        
-        const fetchedMessages = querySnapshot.docs.map(doc => {
+
+        const fetchedMessages = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
             id: doc.id,
             ...data,
-            timestamp: data.timestamp?.toDate(),
+            timestamp: data.timestamp?.toDate() || new Date(),
           };
         });
         setMessages(fetchedMessages);
         setLoading(false);
       }, (error) => {
         console.error("Error fetching messages: ", error);
-        setLoading(false);
+        if (error.code === 'resource-exhausted') {
+          Alert.alert('Quota Exceeded', 'Unable to fetch messages due to Firestore quota limits. Displaying local messages.');
+          setLoading(false);
+        } else {
+          Alert.alert('Error', 'Failed to fetch messages. Please try again.');
+          setLoading(false);
+        }
       });
 
       return () => unsubscribe();
     }
   }, [user]);
 
-  const uploadFileToFirebase = async (fileUri, fileName, mimeType) => {
+  const requestPermissions = async () => {
     try {
-      setUploadProgress(0);
-      console.log('🔄 Starting upload:', { fileUri, fileName, mimeType });
+      const { status: mediaLibraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
 
-      if (!auth.currentUser) {
-        throw new Error('Authentication required. Please sign in again.');
+      if (mediaLibraryStatus !== 'granted' || cameraStatus !== 'granted') {
+        Alert.alert(
+          'Permissions Required',
+          'Camera and photo library permissions are needed to upload images. Please enable them in settings.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return false;
       }
+      return true;
+    } catch (error) {
+      console.error('Permission request error:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+      return false;
+    }
+  };
 
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(fileUri);
-        if (!fileInfo.exists) {
-          throw new Error('Selected file no longer exists. Please try selecting again.');
-        }
-        console.log('✅ File exists:', fileInfo);
-      } catch (fileInfoError) {
-        console.error('❌ Error getting file info:', fileInfoError);
-        throw new Error('Unable to access the selected file. Please try selecting again.');
-      }
+  const convertImageToBase64 = async (fileUri, mimeType) => {
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+      throw new Error('Only JPEG and PNG images are supported.');
+    }
 
-      let blob;
-      try {
-        console.log('📁 Reading file as base64...');
-        const base64 = await FileSystem.readAsStringAsync(fileUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        const byteCharacters = atob(base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        blob = new Blob([byteArray], { type: mimeType });
-        
-        console.log('✅ Blob created from base64:', { size: blob.size, type: blob.type });
-      } catch (base64Error) {
-        console.log('⚠️ Base64 method failed, trying fetch method...');
-        
-        try {
-          const response = await fetch(fileUri);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
-          }
-          blob = await response.blob();
-          console.log('✅ Blob created from fetch:', { size: blob.size, type: blob.type });
-        } catch (fetchError) {
-          console.error('❌ Both upload methods failed:', { base64Error, fetchError });
-          throw new Error('Unable to read the selected file. Please try a different file.');
-        }
-      }
+    setUploadProgress(0);
+    console.log('🔄 Converting image to base64:', { fileUri, mimeType });
 
-      if (!blob || blob.size === 0) {
-        throw new Error('File appears to be empty or corrupted. Please select a different file.');
-      }
-
-      if (blob.size > 10 * 1024 * 1024) {
-        throw new Error('File size must be less than 10MB. Please select a smaller file.');
-      }
-
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substring(2, 15);
-      const safeFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 100);
-      const storagePath = `chat-files/${user.uid}/${timestamp}_${randomId}_${safeFileName}`;
-
-      console.log('📤 Uploading to path:', storagePath);
-      console.log('📤 User authenticated:', !!auth.currentUser, 'UID:', auth.currentUser?.uid);
-
-      const storageRef = ref(storage, storagePath);
-
-      const uploadTask = uploadBytesResumable(storageRef, blob, {
-        contentType: mimeType,
-        customMetadata: {
-          uploadedBy: user.uid,
-          originalName: fileName,
-          uploadTimestamp: timestamp.toString(),
-        },
-      });
+    try {
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
 
       return new Promise((resolve, reject) => {
-        uploadTask.on('state_changed',
-          (snapshot) => {
-            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-            setUploadProgress(progress);
-            console.log('📊 Upload progress:', progress + '%');
-          },
-          (error) => {
-            console.error('❌ Upload failed:', error);
-            setUploadProgress(0);
-            
-            let errorMessage = 'Upload failed. Please try again.';
-            
-            if (error.code) {
-              switch (error.code) {
-                case 'storage/unauthorized':
-                  errorMessage = 'Upload permission denied. Please check your Firebase Storage rules or contact support.';
-                  break;
-                case 'storage/canceled':
-                  errorMessage = 'Upload was canceled.';
-                  break;
-                case 'storage/quota-exceeded':
-                  errorMessage = 'Storage quota exceeded. Please try a smaller file or contact support.';
-                  break;
-                case 'storage/unauthenticated':
-                  errorMessage = 'Authentication expired. Please sign in again.';
-                  break;
-                case 'storage/retry-limit-exceeded':
-                  errorMessage = 'Network error. Please check your connection and try again.';
-                  break;
-                case 'storage/invalid-format':
-                case 'storage/invalid-argument':
-                  errorMessage = 'Invalid file format. Please try a different file.';
-                  break;
-                case 'storage/server-file-wrong-size':
-                  errorMessage = 'File size mismatch. Please try uploading again.';
-                  break;
-                default:
-                  if (error.message.includes('network')) {
-                    errorMessage = 'Network error. Please check your internet connection.';
-                  } else if (error.message.includes('permission')) {
-                    errorMessage = 'Permission denied. Please contact support.';
-                  } else {
-                    errorMessage = `Upload error: ${error.message}`;
-                  }
-              }
-            }
-            
-            reject(new Error(errorMessage));
-          },
-          async () => {
-            try {
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              console.log('✅ Upload successful! Download URL:', downloadURL);
-              setUploadProgress(0);
-              
-              resolve({
-                url: downloadURL,
-                name: fileName,
-                size: blob.size,
-                type: mimeType,
-                path: storagePath,
-              });
-            } catch (urlError) {
-              console.error('❌ Failed to get download URL:', urlError);
-              setUploadProgress(0);
-              reject(new Error('Upload completed but failed to get download link. Please try again.'));
-            }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64String = reader.result;
+          const dataUrl = `data:${mimeType};base64,${base64String.split(',')[1]}`;
+          
+          const base64Length = base64String.length;
+          const estimatedSize = (base64Length * 0.75);
+          
+          if (estimatedSize > 900000) {
+            reject(new Error('Image is too large. Please select a smaller image (under 900 KB).'));
+            return;
           }
-        );
-      });
 
+          setUploadProgress(100);
+          setTimeout(() => setUploadProgress(0), 500);
+          resolve({
+            url: dataUrl,
+            type: 'image',
+            mimeType,
+          });
+        };
+        reader.onerror = () => {
+          console.error('❌ Failed to convert image to base64');
+          setUploadProgress(0);
+          reject(new Error('Failed to convert image to base64. Please try again.'));
+        };
+        reader.readAsDataURL(blob);
+      });
     } catch (error) {
-      console.error('❌ Upload preparation failed:', error);
+      console.error('❌ Image processing failed:', error);
       setUploadProgress(0);
       throw error;
     }
   };
 
-  const requestPermissions = async () => {
+  const sendFileMessage = async (fileUri, fileName, mimeType, fileSize) => {
+    if (!user || sendingMessage || !fileUri || !fileName) {
+      Alert.alert('Error', 'Cannot send file. Please try again.');
+      return;
+    }
+
+    setSendingMessage(true);
+
     try {
-      const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
-      const mediaLibraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (cameraStatus.status !== 'granted' || mediaLibraryStatus.status !== 'granted') {
+      const uploadResult = await convertImageToBase64(fileUri, mimeType);
+
+      const messageText = 'Sent an image';
+      const messageData = {
+        id: `local-${Date.now()}`,
+        text: messageText,
+        timestamp: new Date(),
+        senderId: user.uid,
+        senderName: userName,
+        senderAvatar: userName.substring(0, 2).toUpperCase(),
+        messageType: 'file',
+        fileData: {
+          url: uploadResult.url,
+          name: fileName,
+          type: 'image',
+          size: fileSize,
+          mimeType: mimeType,
+        },
+      };
+
+      setMessages((prevMessages) => [...prevMessages, messageData]);
+
+      const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
+      const messagesRef = collection(chatThreadRef, 'messages');
+
+      await setDoc(chatThreadRef, {
+        lastMessage: messageText,
+        timestamp: serverTimestamp(),
+        userName: userName,
+        userAvatar: userName.substring(0, 2).toUpperCase(),
+        isRead: false,
+      }, { merge: true });
+
+      const docRef = await addDoc(messagesRef, {
+        text: messageText,
+        timestamp: serverTimestamp(),
+        senderId: user.uid,
+        senderName: userName,
+        senderAvatar: userName.substring(0, 2).toUpperCase(),
+        messageType: 'file',
+        fileData: {
+          url: uploadResult.url,
+          name: fileName,
+          type: 'image',
+          size: fileSize,
+          mimeType: mimeType,
+        },
+      });
+
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === messageData.id ? { ...msg, id: docRef.id } : msg
+        )
+      );
+
+      console.log('✅ Image message sent successfully to Firestore');
+    } catch (error) {
+      console.error('❌ Image message send failed:', error);
+      if (error.code === 'resource-exhausted') {
         Alert.alert(
-          'Permissions Required',
-          'Camera and photo library permissions are required to use this feature. Please enable them in your device settings.',
+          'Quota Exceeded',
+          'Unable to send image to admin due to Firestore quota limits. Image is displayed locally.',
+          [{ text: 'OK', style: 'cancel' }]
+        );
+        const messageText = 'Sent an image (local only)';
+        const messageData = {
+          id: `local-${Date.now()}`,
+          text: messageText,
+          timestamp: new Date(),
+          senderId: user.uid,
+          senderName: userName,
+          senderAvatar: userName.substring(0, 2).toUpperCase(),
+          messageType: 'file',
+          fileData: {
+            url: fileUri,
+            name: fileName,
+            type: 'image',
+            size: fileSize,
+            mimeType: mimeType,
+          },
+        };
+        setMessages((prevMessages) => [...prevMessages, messageData]);
+      } else {
+        Alert.alert(
+          'Processing Failed',
+          error.message || 'Failed to send image. Please try again.',
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => {
-              // Deep linking to settings can be implemented here if needed
-            }}
+            { text: 'OK', style: 'cancel' },
+            { text: 'Retry', onPress: () => sendFileMessage(fileUri, fileName, mimeType, fileSize) },
           ]
         );
-        return false;
       }
-      
-      return true;
-    } catch (error) {
-      console.error('Permission request error:', error);
-      return false;
+    } finally {
+      setSendingMessage(false);
     }
   };
 
   const handleAttachment = () => {
     if (sendingMessage) {
-      Alert.alert('Upload in Progress', 'Please wait for the current upload to complete.');
+      Alert.alert('Processing in Progress', 'Please wait for the current operation to complete.');
       return;
     }
 
     Alert.alert(
       'Select Attachment',
-      'Choose the type of file you want to send',
+      'Choose the type of attachment to send',
       [
         { text: 'Camera', onPress: handleCamera },
         { text: 'Photo Library', onPress: handleImagePicker },
-        { text: 'Document', onPress: handleDocumentPicker },
         { text: 'Cancel', style: 'cancel' },
       ]
     );
@@ -369,17 +367,18 @@ const ChatScreen = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 0.5,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         const fileName = `camera_${Date.now()}.jpg`;
-        await sendFileMessage(asset.uri, fileName, 'image/jpeg', asset.fileSize);
+        const mimeType = asset.mimeType || 'image/jpeg';
+        await sendFileMessage(asset.uri, fileName, mimeType, asset.fileSize || 0);
       }
     } catch (error) {
       console.error('Camera error:', error);
-      Alert.alert('Camera Error', 'Failed to take photo. Please try again.');
+      Alert.alert('Error', 'Failed to capture image. Please try again.');
     }
   };
 
@@ -391,111 +390,22 @@ const ChatScreen = () => {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        quality: 0.8,
+        quality: 0.5,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         const fileName = asset.fileName || `image_${Date.now()}.jpg`;
         const mimeType = asset.mimeType || 'image/jpeg';
-        await sendFileMessage(asset.uri, fileName, mimeType, asset.fileSize);
+        if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+          Alert.alert('Invalid Format', 'Please select a JPEG or PNG image.');
+          return;
+        }
+        await sendFileMessage(asset.uri, fileName, mimeType, asset.fileSize || 0);
       }
     } catch (error) {
       console.error('Image picker error:', error);
-      Alert.alert('Image Selection Error', 'Failed to select image. Please try again.');
-    }
-  };
-
-  const handleDocumentPicker = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0];
-        
-        if (asset.size && asset.size > 10 * 1024 * 1024) {
-          Alert.alert('File Too Large', 'Please select a file smaller than 10MB.');
-          return;
-        }
-        
-        const mimeType = asset.mimeType || 'application/octet-stream';
-        await sendFileMessage(asset.uri, asset.name, mimeType, asset.size);
-      }
-    } catch (error) {
-      console.error('Document picker error:', error);
-      Alert.alert('Document Selection Error', 'Failed to select document. Please try again.');
-    }
-  };
-
-  const sendFileMessage = async (fileUri, fileName, mimeType, fileSize) => {
-    if (!user || sendingMessage || !fileUri || !fileName) {
-      return;
-    }
-
-    setSendingMessage(true);
-
-    try {
-      console.log('🚀 Starting file message send:', { fileUri, fileName, mimeType, fileSize });
-      
-      const uploadResult = await uploadFileToFirebase(fileUri, fileName, mimeType);
-      
-      if (!uploadResult?.url) {
-        throw new Error('Upload failed - no download URL received');
-      }
-
-      const fileType = mimeType?.startsWith('image/') ? 'image' : 'document';
-      const messageText = fileType === 'image' ? 'Sent an image' : `Sent a file: ${fileName}`;
-
-      const messageData = {
-        text: messageText,
-        timestamp: serverTimestamp(),
-        senderId: user.uid,
-        senderName: userName,
-        senderAvatar: userName.substring(0, 2).toUpperCase(),
-        messageType: 'file',
-        fileData: {
-          url: uploadResult.url,
-          name: fileName,
-          type: fileType,
-          size: uploadResult.size,
-          mimeType: mimeType,
-          path: uploadResult.path,
-        },
-      };
-
-      const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
-      const messagesRef = collection(chatThreadRef, 'messages');
-
-      await setDoc(chatThreadRef, {
-        lastMessage: messageText,
-        timestamp: serverTimestamp(),
-        userName: userName,
-        userAvatar: userName.substring(0, 2).toUpperCase(),
-        isRead: false,
-      }, { merge: true });
-
-      await addDoc(messagesRef, messageData);
-      
-      console.log('✅ File message sent successfully');
-      
-    } catch (error) {
-      console.error('❌ File message send failed:', error);
-      
-      Alert.alert(
-        'Upload Failed', 
-        error.message || 'Failed to send file. Please try again.',
-        [
-          { text: 'OK' },
-          { text: 'Retry', onPress: () => sendFileMessage(fileUri, fileName, mimeType, fileSize) }
-        ]
-      );
-    } finally {
-      setSendingMessage(false);
-      setUploadProgress(0);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
     }
   };
 
@@ -509,7 +419,7 @@ const ChatScreen = () => {
     try {
       const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
       const messagesRef = collection(chatThreadRef, 'messages');
-      
+
       await setDoc(chatThreadRef, {
         lastMessage: messageText,
         timestamp: serverTimestamp(),
@@ -526,36 +436,126 @@ const ChatScreen = () => {
         senderAvatar: userName.substring(0, 2).toUpperCase(),
         messageType: 'text',
       });
-      
     } catch (error) {
-      console.error("Error sending message: ", error);
-      Alert.alert('Error', 'Failed to send message. Please try again.');
-      setNewMessage(messageText);
+      console.error('Error sending message: ', error);
+      if (error.code === 'resource-exhausted') {
+        Alert.alert(
+          'Quota Exceeded',
+          'Unable to send message due to Firestore quota limits. Saving locally.',
+          [{ text: 'OK', style: 'cancel' }]
+        );
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          {
+            id: `local-${Date.now()}`,
+            text: messageText,
+            timestamp: new Date(),
+            senderId: user.uid,
+            senderName: userName,
+            senderAvatar: userName.substring(0, 2).toUpperCase(),
+            messageType: 'text',
+          },
+        ]);
+      } else {
+        Alert.alert('Error', 'Failed to send message. Please try again.');
+        setNewMessage(messageText);
+      }
     } finally {
       setSendingMessage(false);
     }
   };
-  
+
   const handleDeleteMessage = (messageId) => {
+    if (messageId.startsWith('local-')) {
+      setMessages((prevMessages) => prevMessages.filter((msg) => msg.id !== messageId));
+      return;
+    }
+
     Alert.alert(
-      "Delete Message",
-      "Are you sure you want to delete this message?",
+      'Delete Message',
+      'Are you sure you want to delete this message?',
       [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
           onPress: async () => {
             try {
               const messageDocRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}/messages`, messageId);
               await deleteDoc(messageDocRef);
             } catch (error) {
-              console.error("Error deleting message: ", error);
-              Alert.alert('Error', 'Failed to delete message. Please try again.');
+              console.error('Error deleting message: ', error);
+              if (error.code === 'resource-exhausted') {
+                Alert.alert('Quota Exceeded', 'Unable to delete message due to Firestore quota limits.');
+              } else {
+                Alert.alert('Error', 'Failed to delete message. Please try again.');
+              }
             }
           },
-          style: 'destructive'
-        }
+          style: 'destructive',
+        },
       ]
+    );
+  };
+
+  const renderProposalMessage = (msg, isUserMessage) => {
+    if (!msg.proposalData) return null;
+
+    return (
+      <View style={[styles.messageBubble, isUserMessage ? styles.userBubble : styles.supportBubble]}>
+        <View style={styles.proposalContainer}>
+          <View style={styles.proposalHeader}>
+            <Icon name="file-document-outline" size={20} color={isUserMessage ? '#fff' : '#7F5539'} />
+            <Text style={[styles.proposalTitle, isUserMessage && styles.userMessageText]}>
+              Custom Order Proposal
+            </Text>
+          </View>
+
+          <View style={styles.proposalContent}>
+            <Text style={[styles.proposalText, isUserMessage && styles.userMessageText]}>
+              Order ID: {msg.proposalData.orderId}
+            </Text>
+            <Text style={[styles.proposalText, isUserMessage && styles.userMessageText]}>
+              Total Price: ₱{msg.proposalData.price}
+            </Text>
+            <Text style={[styles.proposalText, isUserMessage && styles.userMessageText]}>
+              Timeline: {msg.proposalData.timeline}
+            </Text>
+
+            {msg.proposalData.downPayment && (
+              <Text style={[styles.proposalText, isUserMessage && styles.userMessageText]}>
+                Down Payment: ₱{msg.proposalData.downPayment}
+              </Text>
+            )}
+
+            {msg.proposalData.notes && (
+              <Text style={[styles.proposalNotes, isUserMessage && styles.userMessageText]}>
+                Notes: {msg.proposalData.notes}
+              </Text>
+            )}
+          </View>
+
+          {msg.proposalData.canProceedToCheckout && !isUserMessage && (
+            <TouchableOpacity
+              style={styles.checkoutButton}
+              onPress={() =>
+                navigation.navigate('CustomOrderCheckoutScreen', {
+                  proposalData: msg.proposalData,
+                  threadId: user.uid,
+                })
+              }
+            >
+              <Text style={styles.checkoutButtonText}>Proceed to Checkout</Text>
+              <Icon name="arrow-right" size={16} color="#fff" />
+            </TouchableOpacity>
+          )}
+
+          {!msg.proposalData.canProceedToCheckout && (
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusText}>Status: {msg.proposalData.status || 'proposal_sent'}</Text>
+            </View>
+          )}
+        </View>
+      </View>
     );
   };
 
@@ -580,20 +580,20 @@ const ChatScreen = () => {
   const renderCustomizationAttachment = (customizationData, isUserMessage) => {
     if (!customizationData) return null;
 
-    const { productInfo, dimensions, frameStyle, frameColor, mirrorType, budget, additionalFeatures } = customizationData;
+    const { productInfo, dimensions, frameStyle, frameColor, mirrorType, budget } = customizationData;
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.customizationAttachment, isUserMessage && styles.userCustomizationAttachment]}
         onPress={() => handleCustomizationPress(customizationData)}
       >
         <View style={styles.customizationHeader}>
-          <Icon name="tools" size={20} color={isUserMessage ? "#FFFFFF" : "#A67B5B"} />
+          <Icon name="tools" size={20} color={isUserMessage ? '#fff' : '#7F5539'} />
           <Text style={[styles.customizationTitle, isUserMessage && styles.userCustomizationText]}>
             Customization Request
           </Text>
         </View>
-        
+
         <View style={styles.customizationPreview}>
           <Text style={[styles.customizationProduct, isUserMessage && styles.userCustomizationText]}>
             {productInfo?.name || 'Unknown Product'}
@@ -610,7 +610,7 @@ const ChatScreen = () => {
           <Text style={[styles.customizationViewText, isUserMessage && styles.userCustomizationText]}>
             Tap to view details
           </Text>
-          <Icon name="chevron-right" size={16} color={isUserMessage ? "#FFFFFF" : "#6B7280"} />
+          <Icon name="chevron-right" size={16} color={isUserMessage ? '#fff' : '#6B7280'} />
         </View>
       </TouchableOpacity>
     );
@@ -620,10 +620,8 @@ const ChatScreen = () => {
     if (!fileData?.url) {
       return (
         <View style={[styles.errorAttachment, isUserMessage && styles.userErrorAttachment]}>
-          <Icon name="alert-circle" size={20} color={isUserMessage ? "#FFFFFF" : "#EF4444"} />
-          <Text style={[styles.errorText, isUserMessage && styles.userErrorText]}>
-            File unavailable
-          </Text>
+          <Icon name="alert-circle" size={20} color={isUserMessage ? '#fff' : '#EF4444'} />
+          <Text style={[styles.errorText, isUserMessage && styles.userErrorText]}>Image unavailable</Text>
         </View>
       );
     }
@@ -631,18 +629,18 @@ const ChatScreen = () => {
     if (fileData.type === 'image') {
       return (
         <TouchableOpacity onPress={() => handleImagePress(fileData.url)}>
-          <Image 
-            source={{ uri: fileData.url }} 
+          <Image
+            source={{ uri: fileData.url }}
             style={styles.imageAttachment}
             resizeMode="cover"
-            onError={() => console.error('Image load error for:', fileData.url)}
+            onError={(e) => console.error('Image load error:', e.nativeEvent.error)}
           />
         </TouchableOpacity>
       );
     }
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.documentAttachment, isUserMessage && styles.userDocumentAttachment]}
         onPress={() => {
           Alert.alert(
@@ -650,16 +648,20 @@ const ChatScreen = () => {
             `Would you like to open ${fileData.name}?`,
             [
               { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Open', 
-                onPress: () => Alert.alert('Info', 'File opening feature coming soon.')
-              }
+              {
+                text: 'Open',
+                onPress: () =>
+                  Linking.openURL(fileData.url).catch((err) => {
+                    console.error('Failed to open file:', err);
+                    Alert.alert('Error', 'Unable to open file.');
+                  }),
+              },
             ]
           );
         }}
       >
         <View style={styles.documentIcon}>
-          <Icon name="file-document-outline" size={24} color="#FFFFFF" />
+          <Icon name="file-document-outline" size={24} color="#fff" />
         </View>
         <View style={styles.documentInfo}>
           <Text style={[styles.documentName, isUserMessage && styles.userDocumentText]} numberOfLines={1}>
@@ -669,7 +671,7 @@ const ChatScreen = () => {
             {formatFileSize(fileData.size)}
           </Text>
         </View>
-        <Icon name="download" size={20} color={isUserMessage ? "#FFFFFF" : "#6B7280"} />
+        <Icon name="download" size={20} color={isUserMessage ? '#fff' : '#6B7280'} />
       </TouchableOpacity>
     );
   };
@@ -691,22 +693,16 @@ const ChatScreen = () => {
     </View>
   );
 
-  const renderMessage = ({ item, index }) => { 
+  const renderMessage = ({ item }) => {
     const isUserMessage = item.senderId === user?.uid;
-    const isLastMessage = index === messages.length - 1;
-    const hasFileAttachment = item.messageType === 'file' && item.fileData;
-    const hasCustomizationAttachment = item.messageType === 'customization_request' && item.customizationData;
-    
-    return (
-      <TouchableOpacity
-        onLongPress={() => isUserMessage && handleDeleteMessage(item.id)}
-        activeOpacity={0.7}
-      >
-        <View style={[
-          styles.messageRow, 
-          { justifyContent: isUserMessage ? 'flex-end' : 'flex-start' },
-          isLastMessage && styles.lastMessage
-        ]}>
+
+    if (item.messageType === 'customization_proposal') {
+      return renderProposalMessage(item, isUserMessage);
+    }
+
+    if (item.messageType === 'customization_request') {
+      return (
+        <View style={[styles.messageRow, { justifyContent: isUserMessage ? 'flex-end' : 'flex-start' }]}>
           {!isUserMessage && (
             <View style={styles.avatarContainer}>
               <View style={styles.supportAvatarGradient}>
@@ -714,88 +710,126 @@ const ChatScreen = () => {
               </View>
             </View>
           )}
-
-          <View style={[
-            styles.messageBubble, 
-            isUserMessage ? styles.userBubble : styles.supportBubble,
-            (hasFileAttachment || hasCustomizationAttachment) && styles.fileMessageBubble
-          ]}>
-            {hasFileAttachment && renderFileAttachment(item.fileData, isUserMessage)}
-            {hasCustomizationAttachment && renderCustomizationAttachment(item.customizationData, isUserMessage)}
-            
-            <Text 
-              style={isUserMessage ? styles.userBubbleText : styles.supportBubbleText}
-              numberOfLines={0}
-            >
-              {item.text || 'No message content'}
-            </Text>
+          <View style={[styles.messageBubble, isUserMessage ? styles.userBubble : styles.supportBubble]}>
+            {renderCustomizationAttachment(item.customizationData, isUserMessage)}
             <Text style={[styles.timestamp, isUserMessage && styles.userTimestamp]}>
-              {item.timestamp ? item.timestamp.toLocaleTimeString([], { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-              }) : 'Sending...'}
+              {item.timestamp
+                ? item.timestamp.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Sending...'}
             </Text>
           </View>
-
           {isUserMessage && (
             <View style={styles.userAvatarContainer}>
               <View style={styles.userAvatarGradient}>
-                <Text style={styles.avatarText}>
-                  {userName.substring(0, 1).toUpperCase()}
-                </Text>
+                <Text style={styles.avatarText}>{userName.substring(0, 2).toUpperCase()}</Text>
               </View>
             </View>
           )}
         </View>
-      </TouchableOpacity>
+      );
+    }
+
+    if (item.messageType === 'file') {
+      return (
+        <View style={[styles.messageRow, { justifyContent: isUserMessage ? 'flex-end' : 'flex-start' }]}>
+          {!isUserMessage && (
+            <View style={styles.avatarContainer}>
+              <View style={styles.supportAvatarGradient}>
+                <Text style={styles.avatarText}>{item.senderAvatar || 'MS'}</Text>
+              </View>
+            </View>
+          )}
+          <View style={[styles.messageBubble, isUserMessage ? styles.userBubble : styles.supportBubble]}>
+            {renderFileAttachment(item.fileData, isUserMessage)}
+            <Text style={[styles.timestamp, isUserMessage && styles.userTimestamp]}>
+              {item.timestamp
+                ? item.timestamp.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Sending...'}
+            </Text>
+          </View>
+          {isUserMessage && (
+            <View style={styles.userAvatarContainer}>
+              <View style={styles.userAvatarGradient}>
+                <Text style={styles.avatarText}>{userName.substring(0, 2).toUpperCase()}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.messageRow, { justifyContent: isUserMessage ? 'flex-end' : 'flex-start' }]}>
+        {!isUserMessage && (
+          <View style={styles.avatarContainer}>
+            <View style={styles.supportAvatarGradient}>
+              <Text style={styles.avatarText}>{item.senderAvatar || 'MS'}</Text>
+            </View>
+          </View>
+        )}
+        <View style={[styles.messageBubble, isUserMessage ? styles.userBubble : styles.supportBubble]}>
+          <Text style={isUserMessage ? styles.userBubbleText : styles.supportBubbleText}>{item.text}</Text>
+          <Text style={[styles.timestamp, isUserMessage && styles.userTimestamp]}>
+            {item.timestamp
+              ? item.timestamp.toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : 'Sending...'}
+          </Text>
+        </View>
+        {isUserMessage && (
+          <View style={styles.userAvatarContainer}>
+            <View style={styles.userAvatarGradient}>
+              <Text style={styles.avatarText}>{userName.substring(0, 2).toUpperCase()}</Text>
+            </View>
+          </View>
+        )}
+      </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#A67B5B" />
+      <StatusBar barStyle="light-content" backgroundColor="#7F5539" />
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            activeOpacity={0.7}
-          >
-            <Icon name="arrow-left" size={24} color="#FFFFFF" />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
+            <Icon name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
-          
+
           <View style={styles.headerInfo}>
             <View style={styles.headerAvatarContainer}>
               <View style={styles.headerAvatarGradient}>
-                <Icon name="account-tie" size={20} color="#FFFFFF" />
+                <Icon name="account-tie" size={20} color="#fff" />
               </View>
               <View style={styles.onlineIndicator} />
             </View>
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitle}>Mirrora Support</Text>
-              <Text style={styles.headerSubtitle}>
-                {isTyping ? 'typing...' : 'Online • Usually replies instantly'}
-              </Text>
+              <Text style={styles.headerSubtitle}>{isTyping ? 'Typing...' : 'Online • Instant replies'}</Text>
             </View>
           </View>
 
-          <TouchableOpacity 
-            style={styles.moreButton}
-            activeOpacity={0.7}
-          >
-            <Icon name="dots-vertical" size={24} color="#FFFFFF" />
+          <TouchableOpacity style={styles.moreButton} activeOpacity={0.7}>
+            <Icon name="dots-vertical" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.chatContainer}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
         >
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#A67B5B" />
+              <ActivityIndicator size="large" color="#7F5539" />
               <Text style={styles.loadingText}>Loading messages...</Text>
             </View>
           ) : (
@@ -813,17 +847,15 @@ const ChatScreen = () => {
               {isTyping && <TypingIndicator />}
             </>
           )}
-          
-          {/* Upload Progress */}
+
           {uploadProgress > 0 && uploadProgress < 100 && (
             <View style={styles.uploadProgressContainer}>
               <View style={styles.uploadProgressHeader}>
-                <Text style={styles.uploadProgressText}>
-                  Uploading file... {uploadProgress}%
-                </Text>
-                <TouchableOpacity 
+                <Text style={styles.uploadProgressText}>Processing image... {uploadProgress}%</Text>
+                <TouchableOpacity
                   onPress={() => {
-                    Alert.alert('Cancel Upload', 'Upload cancellation will be available in a future update.');
+                    setUploadProgress(0);
+                    Alert.alert('Processing Canceled', 'Image processing has been canceled.');
                   }}
                 >
                   <Icon name="close" size={20} color="#6B7280" />
@@ -834,12 +866,13 @@ const ChatScreen = () => {
               </View>
             </View>
           )}
-          
-          {/* Input Container */}
-          <View style={[
-            styles.inputOuterContainer,
-            keyboardVisible && styles.inputOuterContainerKeyboard
-          ]}>
+
+          <View
+            style={[
+              styles.inputOuterContainer,
+              keyboardVisible && styles.inputOuterContainerKeyboard,
+            ]}
+          >
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
@@ -848,45 +881,41 @@ const ChatScreen = () => {
                 placeholder="Type your message..."
                 placeholderTextColor="#9CA3AF"
                 multiline
-                textAlignVertical="top"
+                textAlignVertical="center"
                 maxLength={1000}
                 editable={!sendingMessage}
               />
-              
+
               <View style={styles.inputActions}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.attachButton}
                   onPress={handleAttachment}
                   activeOpacity={0.7}
                   disabled={sendingMessage}
                 >
-                  <Icon 
-                    name="attachment" 
-                    size={22} 
-                    color={sendingMessage ? "#9CA3AF" : "#6B7280"} 
+                  <Icon
+                    name="attachment"
+                    size={24}
+                    color={sendingMessage ? '#9CA3AF' : '#7F5539'}
                   />
                 </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[
-                    styles.sendButton,
-                    (newMessage.trim() && !sendingMessage) && styles.sendButtonActive
-                  ]} 
+
+                <TouchableOpacity
+                  style={[styles.sendButton, newMessage.trim() && !sendingMessage && styles.sendButtonActive]}
                   onPress={handleSend}
                   disabled={!newMessage.trim() || sendingMessage}
                   activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.sendButtonGradient,
-                    (newMessage.trim() && !sendingMessage) && styles.sendButtonGradientActive
-                  ]}>
+                  <View
+                    style={[styles.sendButtonGradient, newMessage.trim() && !sendingMessage ? styles.sendButtonGradientActive : null]}
+                  >
                     {sendingMessage ? (
-                      <ActivityIndicator size={16} color="#FFFFFF" />
+                      <ActivityIndicator size={18} color="#fff" />
                     ) : (
-                      <Icon 
-                        name={newMessage.trim() ? "send" : "send-outline"} 
-                        size={20} 
-                        color="#FFFFFF" 
+                      <Icon
+                        name={newMessage.trim() ? 'send' : 'send-outline'}
+                        size={22}
+                        color="#fff"
                       />
                     )}
                   </View>
@@ -896,7 +925,6 @@ const ChatScreen = () => {
           </View>
         </KeyboardAvoidingView>
 
-        {/* Image Preview Modal */}
         <Modal
           visible={showImageModal}
           transparent={true}
@@ -904,22 +932,17 @@ const ChatScreen = () => {
           onRequestClose={() => setShowImageModal(false)}
         >
           <View style={styles.modalContainer}>
-            <TouchableOpacity 
-              style={styles.modalOverlay}
-              onPress={() => setShowImageModal(false)}
-            >
+            <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowImageModal(false)}>
               <View style={styles.modalContent}>
-                <TouchableOpacity 
-                  style={styles.closeButton}
-                  onPress={() => setShowImageModal(false)}
-                >
-                  <Icon name="close" size={30} color="#FFFFFF" />
+                <TouchableOpacity style={styles.closeButton} onPress={() => setShowImageModal(false)}>
+                  <Icon name="close" size={28} color="#fff" />
                 </TouchableOpacity>
                 {selectedImage && (
-                  <Image 
-                    source={{ uri: selectedImage }} 
+                  <Image
+                    source={{ uri: selectedImage }}
                     style={styles.modalImage}
                     resizeMode="contain"
+                    onError={(e) => console.error('Modal image load error:', e.nativeEvent.error)}
                   />
                 )}
               </View>
@@ -927,7 +950,6 @@ const ChatScreen = () => {
           </View>
         </Modal>
 
-        {/* Customization Details Modal */}
         <Modal
           visible={showCustomizationModal}
           transparent={true}
@@ -938,14 +960,14 @@ const ChatScreen = () => {
             <View style={styles.customizationModal}>
               <View style={styles.customizationModalHeader}>
                 <Text style={styles.customizationModalTitle}>Customization Request</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setShowCustomizationModal(false)}
                 >
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
               </View>
-              
+
               {selectedCustomization && (
                 <ScrollView style={styles.customizationModalContent}>
                   <View style={styles.customizationModalSection}>
@@ -962,23 +984,34 @@ const ChatScreen = () => {
                     <Text style={styles.customizationModalSectionTitle}>Dimensions</Text>
                     <Text style={styles.customizationModalText}>
                       {selectedCustomization.dimensions?.height} × {selectedCustomization.dimensions?.width} cm
-                      {selectedCustomization.dimensions?.depth && ` × ${selectedCustomization.dimensions.depth} cm`}
+                      {selectedCustomization.dimensions?.depth &&
+                        ` × ${selectedCustomization.dimensions.depth} cm`}
                     </Text>
                   </View>
 
                   <View style={styles.customizationModalSection}>
                     <Text style={styles.customizationModalSectionTitle}>Specifications</Text>
-                    <Text style={styles.customizationModalText}>Frame: {selectedCustomization.frameStyle}</Text>
-                    <Text style={styles.customizationModalText}>Color: {selectedCustomization.frameColor}</Text>
-                    <Text style={styles.customizationModalText}>Mirror: {selectedCustomization.mirrorType}</Text>
-                    <Text style={styles.customizationModalText}>Mounting: {selectedCustomization.mountingType}</Text>
+                    <Text style={styles.customizationModalText}>
+                      Frame: {selectedCustomization.frameStyle}
+                    </Text>
+                    <Text style={styles.customizationModalText}>
+                      Color: {selectedCustomization.frameColor}
+                    </Text>
+                    <Text style={styles.customizationModalText}>
+                      Mirror: {selectedCustomization.mirrorType}
+                    </Text>
+                    <Text style={styles.customizationModalText}>
+                      Mounting: {selectedCustomization.mountingType}
+                    </Text>
                   </View>
 
                   {selectedCustomization.additionalFeatures?.length > 0 && (
                     <View style={styles.customizationModalSection}>
                       <Text style={styles.customizationModalSectionTitle}>Additional Features</Text>
                       {selectedCustomization.additionalFeatures.map((feature, index) => (
-                        <Text key={index} style={styles.customizationModalText}>• {feature}</Text>
+                        <Text key={index} style={styles.customizationModalText}>
+                          • {feature}
+                        </Text>
                       ))}
                     </View>
                   )}
@@ -991,18 +1024,22 @@ const ChatScreen = () => {
                   {selectedCustomization.deliveryDate && (
                     <View style={styles.customizationModalSection}>
                       <Text style={styles.customizationModalSectionTitle}>Preferred Delivery</Text>
-                      <Text style={styles.customizationModalText}>{selectedCustomization.deliveryDate}</Text>
+                      <Text style={styles.customizationModalText}>
+                        {selectedCustomization.deliveryDate}
+                      </Text>
                     </View>
                   )}
 
                   {selectedCustomization.specialInstructions && (
                     <View style={styles.customizationModalSection}>
                       <Text style={styles.customizationModalSectionTitle}>Special Instructions</Text>
-                      <Text style={styles.customizationModalText}>{selectedCustomization.specialInstructions}</Text>
+                      <Text style={styles.customizationModalText}>
+                        {selectedCustomization.specialInstructions}
+                      </Text>
                     </View>
                   )}
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.customizationModalButton}
                     onPress={() => setShowCustomizationModal(false)}
                   >
@@ -1019,234 +1056,221 @@ const ChatScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { 
-    flex: 1, 
-    backgroundColor: '#A67B5B'
-  },
-  container: { 
+  safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#7F5539',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
   },
   header: {
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 20 : 15,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#A67B5B',
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
+    backgroundColor: '#7F5539',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 6,
   },
   backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   headerInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 15,
+    marginHorizontal: 12,
   },
   headerAvatarContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: 10,
   },
   headerAvatarGradient: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#8B5E3C',
+    backgroundColor: '#9C6644',
   },
   onlineIndicator: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#10B981',
-    borderWidth: 3,
-    borderColor: '#A67B5B',
+    bottom: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22C55E',
+    borderWidth: 2,
+    borderColor: '#7F5539',
   },
   headerTextContainer: {
     flex: 1,
   },
-  headerTitle: { 
-    fontSize: 18, 
-    fontWeight: 'bold', 
-    color: '#FFFFFF',
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
     marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
     fontWeight: '500',
   },
   moreButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  chatContainer: { 
+  chatContainer: {
     flex: 1,
-    marginTop: 10,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F9FAFB',
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 12,
     color: '#6B7280',
     fontSize: 16,
+    fontWeight: '500',
   },
-  messageList: { 
-    padding: 20, 
+  messageList: {
+    padding: 16,
     flexGrow: 1,
-    paddingBottom: 10,
+    paddingBottom: 20,
   },
-  messageRow: { 
-    flexDirection: 'row', 
-    marginVertical: 4,
+  messageRow: {
+    flexDirection: 'row',
+    marginVertical: 6,
     alignItems: 'flex-end',
   },
-  lastMessage: {
-    marginBottom: 10,
-  },
   avatarContainer: {
-    marginRight: 10,
-    marginBottom: 5,
+    marginRight: 8,
+    marginBottom: 4,
   },
   userAvatarContainer: {
-    marginLeft: 10,
-    marginBottom: 5,
+    marginLeft: 8,
+    marginBottom: 4,
   },
   supportAvatarGradient: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#A67B5B',
+    backgroundColor: '#9C6644',
   },
   userAvatarGradient: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#8B5E3C',
+    backgroundColor: '#7F5539',
   },
   avatarText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   messageBubble: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
+    padding: 12,
+    borderRadius: 16,
     maxWidth: '75%',
-    minWidth: 50,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  fileMessageBubble: {
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+  userBubble: {
+    backgroundColor: '#7F5539',
+    borderBottomRightRadius: 4,
+    marginLeft: 16,
   },
-  userBubble: { 
-    backgroundColor: '#A67B5B',
-    borderBottomRightRadius: 6,
-    marginLeft: 20,
-    alignSelf: 'flex-end',
-  },
-  supportBubble: { 
-    backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 6,
-    marginRight: 20,
-    alignSelf: 'flex-start',
+  supportBubble: {
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: 4,
+    marginRight: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  userBubbleText: { 
-    color: '#FFFFFF', 
+  userBubbleText: {
+    color: '#fff',
     fontSize: 16,
     lineHeight: 22,
   },
-  supportBubbleText: { 
-    color: '#374151', 
+  supportBubbleText: {
+    color: '#1F2937',
     fontSize: 16,
     lineHeight: 22,
   },
-  timestamp: { 
-    fontSize: 11, 
-    color: '#6B7280', 
-    alignSelf: 'flex-end', 
-    marginTop: 4,
-    opacity: 0.7,
+  timestamp: {
+    fontSize: 12,
+    color: '#6B7280',
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    opacity: 0.8,
   },
   userTimestamp: {
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.85)',
   },
   typingContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   typingBubble: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderBottomLeftRadius: 6,
-    padding: 16,
-    marginLeft: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    padding: 12,
+    marginLeft: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   typingDots: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#6B7280',
-    marginHorizontal: 2,
+    marginHorizontal: 3,
   },
   dot1: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   dot2: {
-    opacity: 0.8,
+    opacity: 0.75,
   },
   dot3: {
     opacity: 1,
   },
-  // File attachment styles
   imageAttachment: {
-    width: screenWidth * 0.5,
-    height: screenWidth * 0.4,
+    width: screenWidth * 0.55,
+    height: screenWidth * 0.45,
     borderRadius: 12,
     marginBottom: 8,
   },
@@ -1261,17 +1285,17 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   userDocumentAttachment: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   documentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#A67B5B',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#7F5539',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
   documentInfo: {
     flex: 1,
@@ -1279,17 +1303,16 @@ const styles = StyleSheet.create({
   documentName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 2,
+    color: '#1F2937',
+    marginBottom: 4,
   },
   documentSize: {
     fontSize: 12,
     color: '#6B7280',
   },
   userDocumentText: {
-    color: '#FFFFFF',
+    color: '#fff',
   },
-  // Error attachment styles
   errorAttachment: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1301,8 +1324,8 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
   },
   userErrorAttachment: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderColor: 'rgba(239,68,68,0.3)',
   },
   errorText: {
     fontSize: 14,
@@ -1310,9 +1333,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   userErrorText: {
-    color: '#FFFFFF',
+    color: '#fff',
   },
-  // Customization attachment styles
   customizationAttachment: {
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
@@ -1320,39 +1342,39 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    minWidth: screenWidth * 0.7,
+    minWidth: screenWidth * 0.65,
   },
   userCustomizationAttachment: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   customizationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   customizationTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#A67B5B',
+    color: '#7F5539',
     marginLeft: 8,
   },
   userCustomizationText: {
-    color: '#FFFFFF',
+    color: '#fff',
   },
   customizationPreview: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   customizationProduct: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 4,
+    color: '#1F2937',
+    marginBottom: 6,
   },
   customizationDetail: {
-    fontSize: 13,
+    fontSize: 14,
     color: '#6B7280',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   customizationFooter: {
     flexDirection: 'row',
@@ -1361,14 +1383,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   customizationViewText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6B7280',
     fontStyle: 'italic',
   },
-  // Upload progress styles
   uploadProgressContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   uploadProgressHeader: {
     flexDirection: 'row',
@@ -1378,24 +1408,23 @@ const styles = StyleSheet.create({
   },
   uploadProgressText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#1F2937',
     fontWeight: '500',
   },
   progressBar: {
-    height: 6,
+    height: 8,
     backgroundColor: '#E5E7EB',
-    borderRadius: 3,
+    borderRadius: 4,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#A67B5B',
-    borderRadius: 3,
+    backgroundColor: '#7F5539',
+    borderRadius: 4,
   },
-  // Modal styles
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1407,32 +1436,37 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '90%',
-    height: '70%',
+    height: '75%',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeButton: {
     position: 'absolute',
-    top: -50,
-    right: 20,
-    zIndex: 1,
-    padding: 10,
+    top: -40,
+    right: 16,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
   },
   modalImage: {
     width: '100%',
     height: '100%',
     borderRadius: 12,
   },
-  // Customization modal styles
   customizationModal: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    maxHeight: '80%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   customizationModalHeader: {
     flexDirection: 'row',
@@ -1444,109 +1478,165 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   customizationModalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#374151',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
   },
   closeModalButton: {
-    padding: 5,
+    padding: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
   },
   customizationModalContent: {
     padding: 20,
-    maxHeight: '90%',
   },
   customizationModalSection: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   customizationModalSectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#A67B5B',
-    marginBottom: 8,
+    color: '#7F5539',
+    marginBottom: 10,
   },
   customizationModalText: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 2,
-    lineHeight: 20,
+    fontSize: 15,
+    color: '#1F2937',
+    marginBottom: 6,
+    lineHeight: 22,
   },
   customizationModalPrice: {
-    fontSize: 14,
-    color: '#10B981',
+    fontSize: 15,
+    color: '#22C55E',
     fontWeight: '600',
+    marginTop: 4,
   },
   customizationModalButton: {
-    backgroundColor: '#A67B5B',
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: '#7F5539',
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 20,
+    marginBottom: 20,
   },
   customizationModalButtonText: {
-    color: '#FFFFFF',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   inputOuterContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 10,
+    elevation: 8,
   },
   inputOuterContainerKeyboard: {
-    paddingBottom: Platform.OS === 'ios' ? 15 : 10,
+    paddingBottom: Platform.OS === 'ios' ? 12 : 8,
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     backgroundColor: '#F3F4F6',
-    borderRadius: 25,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    minHeight: 50,
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#111827',
+    color: '#1F2937',
     paddingVertical: 8,
-    paddingHorizontal: 5,
-    maxHeight: 100,
-    lineHeight: 20,
+    maxHeight: 120,
+    lineHeight: 22,
   },
   inputActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 5,
+    marginLeft: 8,
   },
   attachButton: {
     padding: 8,
-    marginRight: 5,
   },
   sendButton: {
-    padding: 2,
+    padding: 4,
   },
   sendButtonGradient: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#9CA3AF',
   },
   sendButtonGradientActive: {
-    backgroundColor: '#A67B5B',
+    backgroundColor: '#7F5539',
   },
-  sendButtonActive: {
-    // Additional styling for active state
+  sendButtonActive: {},
+  proposalContainer: {
+    width: '100%',
+  },
+  proposalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  proposalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+    color: '#1F2937',
+  },
+  proposalContent: {
+    marginBottom: 12,
+  },
+  proposalText: {
+    fontSize: 14,
+    marginBottom: 6,
+    color: '#1F2937',
+  },
+  proposalNotes: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginTop: 8,
+    color: '#6B7280',
+  },
+  checkoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7F5539',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  checkoutButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    marginRight: 8,
+  },
+  statusContainer: {
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  userMessageText: {
+    color: '#fff',
   },
 });
 

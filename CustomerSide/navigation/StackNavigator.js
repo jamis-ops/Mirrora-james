@@ -22,6 +22,7 @@ import OrderConfirmationScreen from "../screens/OrderConfirmationScreen";
 import MyOrderScreen from "../screens/MyOrderScreen";
 import SettingScreen from "../screens/SettingScreen";
 import VerifyEmailScreen from "../screens/VerifyEmailScreen";
+import CustomOrderCheckoutScreen from '../screens/CustomOrderCheckoutScreen';
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
@@ -91,6 +92,7 @@ export default function StackNavigator() {
         <Stack.Screen name="MessageScreen" component={MessageScreen} />
         <Stack.Screen name="ChatScreen" component={ChatScreen} />
         <Stack.Screen name="ChatbotScreen" component={ChatbotScreen} />
+        <Stack.Screen name="CustomOrderCheckoutScreen" component={CustomOrderCheckoutScreen} />
         
         {/* Other Screens */}
         <Stack.Screen name="HelpAndSupportScreen" component={HelpAndSupportScreen} />

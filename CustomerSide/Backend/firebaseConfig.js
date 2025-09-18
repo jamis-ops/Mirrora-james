@@ -1,8 +1,6 @@
-// Backend/firebaseConfig.js - Complete Fixed and Corrected Version
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, setDoc } from "firebase/firestore";
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getStorage } from 'firebase/storage'; // ADDED FOR FILE ATTACHMENTS
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -27,9 +25,6 @@ export const db = getFirestore(app);
 export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(ReactNativeAsyncStorage),
 });
-
-// Initialize Storage for file attachments - ADDED THIS
-export const storage = getStorage(app);
 
 /**
  * Adds or updates a user's display name within the chat system.

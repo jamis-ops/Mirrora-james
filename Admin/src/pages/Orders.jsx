@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, Tag } from "lucide-react";
 
 import { db, collection, getDocs, doc, updateDoc } from "../../Backend/firebaseConfig.js";
 import { query, orderBy, limit } from "firebase/firestore";
@@ -165,6 +165,24 @@ const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
     );
 };
 
+// Order Type Badge Component
+const OrderTypeBadge = ({ type }) => {
+    if (type === 'custom') {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                <Tag className="w-3 h-3" />
+                Custom
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+            <Tag className="w-3 h-3" />
+            Regular
+        </span>
+    );
+};
+
 // Order Detail Modal Component
 const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePayment }) => {
     if (!isOpen) return null;
@@ -196,9 +214,95 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
         }
     }, []);
 
-    const totalAmount = parseFloat(order.amount?.toString().replace(/[₱,]/g, '') || order.price?.toString().replace(/[₱,]/g, '') || '0');
+    const totalAmount = getTotalAmount(order);
     const downpaymentAmount = totalAmount * 0.5;
     const remainingAmount = totalAmount - downpaymentAmount;
+
+    const renderProductDetails = () => {
+        if (order.type === 'custom') {
+            return (
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                            <Package className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                            <h4 className="text-lg font-semibold text-gray-900">Custom Order Details</h4>
+                            <OrderTypeBadge type="custom" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <label className="text-sm font-medium text-blue-800 block mb-2">Base Product</label>
+                            <p className="text-lg font-semibold text-gray-900">{order.customizationDetails?.productInfo?.name || 'Custom Mirror'}</p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <label className="text-sm font-medium text-blue-800 block mb-2">Dimensions</label>
+                            <p className="text-lg font-semibold text-gray-900">
+                                {order.customizationDetails?.dimensions 
+                                    ? `${order.customizationDetails.dimensions.height} × ${order.customizationDetails.dimensions.width} cm` 
+                                    : 'Custom size'}
+                            </p>
+                        </div>
+                        {order.customizationDetails?.frameStyle && (
+                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                <label className="text-sm font-medium text-blue-800 block mb-2">Frame Style</label>
+                                <p className="text-lg font-semibold text-gray-900">{order.customizationDetails.frameStyle}</p>
+                            </div>
+                        )}
+                        {order.customizationDetails?.material && (
+                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                <label className="text-sm font-medium text-blue-800 block mb-2">Material</label>
+                                <p className="text-lg font-semibold text-gray-900">{order.customizationDetails.material}</p>
+                            </div>
+                        )}
+                        {order.customizationDetails?.referenceImages && order.customizationDetails.referenceImages.length > 0 && (
+                            <div className="md:col-span-2 bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                <label className="text-sm font-medium text-blue-800 block mb-2">Reference Images</label>
+                                <p className="text-gray-900">{order.customizationDetails.referenceImages.length} image(s) provided</p>
+                                {/* You can add image display here if needed */}
+                            </div>
+                        )}
+                        {order.customizationDetails?.additionalNotes && (
+                            <div className="md:col-span-2 bg-blue-50 p-4 rounded-xl border border-blue-200">
+                                <label className="text-sm font-medium text-blue-800 block mb-2">Additional Notes</label>
+                                <p className="text-gray-900 italic">{order.customizationDetails.additionalNotes}</p>
+                            </div>
+                        )}
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-xl">
+                        <label className="text-sm font-medium text-gray-600 block mb-2">Quantity</label>
+                        <p className="text-xl font-bold text-gray-900">1 (Custom)</p>
+                    </div>
+                </div>
+            );
+        } else {
+            // Regular order details
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-gray-500 block mb-1">Product Name</label>
+                        <p className="text-xl font-semibold text-gray-900 mb-3">{getProductName(order)}</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                                <span className="text-gray-600">Quantity:</span>
+                                <p className="font-semibold text-gray-900">{order.quantity || '1'}</p>
+                            </div>
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                                <span className="text-gray-600">Total Amount:</span>
+                                <p className="font-bold text-[#A68B69] text-lg">{formatCurrency(totalAmount)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-center">
+                        <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center">
+                            <Package className="w-8 h-8 text-gray-400" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -212,6 +316,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
+                                <OrderTypeBadge type={order.type || 'regular'} />
                                 <p className="text-gray-600">Complete order information and management</p>
                             </div>
                         </div>
@@ -276,7 +381,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Customer Name</label>
-                                        <p className="text-lg font-semibold text-gray-900">{order.customer?.name || order.customerName || 'N/A'}</p>
+                                        <p className="text-lg font-semibold text-gray-900">{getCustomerName(order)}</p>
                                     </div>
                                 </div>
                             </div>
@@ -314,27 +419,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                             Product Details
                         </h3>
                         <div className="bg-white rounded-xl p-6 shadow-sm">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="md:col-span-2">
-                                    <label className="text-sm font-medium text-gray-500 block mb-1">Product Name</label>
-                                    <p className="text-xl font-semibold text-gray-900 mb-3">{order.product || order.productName || 'N/A'}</p>
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
-                                        <div className="bg-gray-50 p-3 rounded-lg">
-                                            <span className="text-gray-600">Quantity:</span>
-                                            <p className="font-semibold text-gray-900">{order.quantity || '1'}</p>
-                                        </div>
-                                        <div className="bg-gray-50 p-3 rounded-lg">
-                                            <span className="text-gray-600">Total Amount:</span>
-                                            <p className="font-bold text-[#A68B69] text-lg">{formatCurrency(totalAmount)}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center justify-center">
-                                    <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center">
-                                        <Package className="w-8 h-8 text-gray-400" />
-                                    </div>
-                                </div>
-                            </div>
+                            {renderProductDetails()}
                         </div>
                     </div>
 
@@ -467,7 +552,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     );
 };
 
-// Helper function to extract customer name from order
+// Updated Helper function to extract customer name from order
 const getCustomerName = (order) => {
     // Check all possible locations where customer name might be stored
     if (order.customer?.name) return order.customer.name;
@@ -475,11 +560,15 @@ const getCustomerName = (order) => {
     if (order.items && order.items[0]?.name) return order.items[0].name;
     if (order.shippingInfo?.name) return order.shippingInfo.name;
     if (order.userInfo?.name) return order.userInfo.name;
+    if (order.customer?.fullName) return order.customer.fullName; // For custom orders
     return 'N/A';
 };
 
-// Helper function to extract product name from order
+// Updated Helper function to extract product name from order
 const getProductName = (order) => {
+    if (order.type === 'custom') {
+        return order.customizationDetails?.productInfo?.name || "Custom Mirror Order";
+    }
     if (order.product) return order.product;
     if (order.productName) return order.productName;
     if (order.items && order.items[0]?.productName) return order.items[0].productName;
@@ -487,17 +576,25 @@ const getProductName = (order) => {
     return 'N/A';
 };
 
-// Helper function to extract total amount from order
+// Updated Helper function to extract total amount from order (returns number)
 const getTotalAmount = (order) => {
-    if (order.amount) return order.amount;
-    if (order.price) return order.price;
-    if (order.items && order.items[0]?.total) return order.items[0].total;
-    if (order.total) return order.total;
-    return '0';
+    let amount;
+    if (order.type === 'custom') {
+        amount = order.total;
+    } else {
+        amount = order.amount || order.price || (order.items && order.items[0]?.total) || order.total;
+    }
+    if (typeof amount === 'string') {
+        return parseFloat(amount.replace(/[₱,]/g, '')) || 0;
+    }
+    return typeof amount === 'number' ? amount : 0;
 };
 
-// Helper function to extract order date from order
+// Updated Helper function to extract order date from order
 const getOrderDate = (order) => {
+    if (order.type === 'custom') {
+        return order.createdAt || order.timestamp || order.date;
+    }
     if (order.date) return order.date;
     if (order.orderDate) return order.orderDate;
     if (order.createdAt) return order.createdAt;
@@ -510,6 +607,7 @@ export default function Orders() {
     const [orders, setOrders] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
+    const [typeFilter, setTypeFilter] = useState("All"); // New filter for order type
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -563,10 +661,14 @@ export default function Orders() {
         try {
             const ordersCollectionRef = collection(db, "orders");
             const ordersSnapshot = await getDocs(ordersCollectionRef);
-            const ordersList = ordersSnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            const ordersList = ordersSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    type: data.type || 'regular', // Ensure type is set
+                    ...data
+                };
+            });
             setOrders(ordersList);
             
             // Debug: Log the first order to see its structure
@@ -574,6 +676,7 @@ export default function Orders() {
                 console.log("First order structure:", ordersList[0]);
                 console.log("Order date field:", ordersList[0].date);
                 console.log("Order timestamp field:", ordersList[0].timestamp);
+                console.log("Custom orders found:", ordersList.filter(o => o.type === 'custom').length);
             }
         } catch (error) {
             console.error("Error fetching orders:", error);
@@ -606,9 +709,13 @@ export default function Orders() {
             const matchesStatus = statusFilter === "All Status" || 
                 (order.status && order.status.toLowerCase() === statusFilter.toLowerCase());
             
-            return matchesSearch && matchesStatus;
+            // New: Type filter
+            const matchesType = typeFilter === "All" || 
+                (order.type && order.type.toLowerCase() === typeFilter.toLowerCase());
+            
+            return matchesSearch && matchesStatus && matchesType;
         });
-    }, [orders, searchQuery, statusFilter]);
+    }, [orders, searchQuery, statusFilter, typeFilter]);
 
     // Pagination logic
     const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
@@ -622,6 +729,7 @@ export default function Orders() {
         processing: orders.filter((o) => o.status && o.status.toLowerCase() === "processing").length,
         shipped: orders.filter((o) => o.status && o.status.toLowerCase() === "shipped").length,
         delivered: orders.filter((o) => o.status && o.status.toLowerCase() === "delivered").length,
+        custom: orders.filter((o) => o.type && o.type.toLowerCase() === "custom").length,
     }), [orders]);
 
     // FIXED: Calculate revenue from delivered AND paid orders
@@ -633,21 +741,13 @@ export default function Orders() {
             )
             .reduce((sum, order) => {
                 const amount = getTotalAmount(order);
-                let numericAmount = 0;
-                
-                // Handle different amount formats
-                if (typeof amount === 'string') {
-                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
-                } else if (typeof amount === 'number') {
-                    numericAmount = amount;
-                }
                 
                 // If payment is partial, only count 50% of the amount
                 if (order.payment && order.payment.toLowerCase() === "partial") {
-                    return sum + (numericAmount * 0.5);
+                    return sum + (amount * 0.5);
                 }
                 
-                return sum + numericAmount;
+                return sum + amount;
             }, 0);
     }, [orders]);
 
@@ -657,19 +757,12 @@ export default function Orders() {
             .filter(order => order.payment && (order.payment.toLowerCase() === "paid" || order.payment.toLowerCase() === "partial"))
             .reduce((sum, order) => {
                 const amount = getTotalAmount(order);
-                let numericAmount = 0;
-                
-                if (typeof amount === 'string') {
-                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
-                } else if (typeof amount === 'number') {
-                    numericAmount = amount;
-                }
                 
                 if (order.payment && order.payment.toLowerCase() === "partial") {
-                    return sum + (numericAmount * 0.5);
+                    return sum + (amount * 0.5);
                 }
                 
-                return sum + numericAmount;
+                return sum + amount;
             }, 0);
     }, [orders]);
 
@@ -746,6 +839,7 @@ export default function Orders() {
         // Flatten orders for Excel
         const exportData = filteredOrders.map(order => ({
             OrderID: order.id,
+            Type: order.type || 'regular',
             CustomerName: getCustomerName(order),
             Email: order.customer?.email || order.customerEmail || order.email || "N/A",
             Phone: order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || "N/A",
@@ -767,6 +861,7 @@ export default function Orders() {
     };
 
     const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered"];
+    const typeOptions = ["All", "Regular", "Custom"];
 
     if (loading) {
         return (
@@ -803,7 +898,7 @@ export default function Orders() {
                         </div>
                     </div>
 
-                    {/* Enhanced Stats Cards */}
+                    {/* Enhanced Stats Cards - Added Custom count */}
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                         <div
                             className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "All Status" ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20" : "border-gray-200 hover:border-[#A68B69]/50"}`}
@@ -890,9 +985,32 @@ export default function Orders() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Custom Orders Stat Card */}
+                    {orderCounts.custom > 0 && (
+                        <div className="mt-6 bg-blue-50 rounded-2xl p-6 border border-blue-200">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                                        <Tag className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-blue-800">Custom Orders</h3>
+                                        <p className="text-blue-600">{orderCounts.custom} custom orders pending customization</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => { setTypeFilter("Custom"); setStatusFilter("All Status"); setCurrentPage(1); }}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200"
+                                >
+                                    View Custom
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Search and Filter Section */}
+                {/* Search and Filter Section - Added Type Filter */}
                 <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 mb-8">
                     <div className="flex flex-col lg:flex-row gap-4 items-center">
                         <div className="relative flex-1 w-full lg:max-w-md">
@@ -922,6 +1040,22 @@ export default function Orders() {
                                 ))}
                             </select>
                         </div>
+                        {/* New Type Filter */}
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <Tag className="w-5 h-5 text-gray-400" />
+                                <span className="text-sm font-medium text-gray-700">Filter by Type:</span>
+                            </div>
+                            <select
+                                value={typeFilter}
+                                onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
+                                className="py-3 px-4 border-2 border-gray-200 rounded-xl text-sm font-medium text-gray-700 focus:ring-4 focus:ring-[#A68B69]/20 focus:border-[#A68B69] transition-all duration-200"
+                            >
+                                {typeOptions.map((option) => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
                         <button
                             onClick={exportToExcel}
                             className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl ml-2 transition-all duration-200 flex items-center gap-2"
@@ -931,7 +1065,7 @@ export default function Orders() {
                     </div>
                 </div>
 
-                {/* Orders Table */}
+                {/* Orders Table - Added Type Column and Visual Distinction */}
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm text-gray-600">
@@ -939,6 +1073,7 @@ export default function Orders() {
                                 <tr>
                                     <th scope="col" className="p-4 rounded-tl-xl">Order ID</th>
                                     <th scope="col" className="p-4">Customer Name</th>
+                                    <th scope="col" className="p-4">Type</th>
                                     <th scope="col" className="p-4">Product</th>
                                     <th scope="col" className="p-4">Order Date</th>
                                     <th scope="col" className="p-4">Total Amount</th>
@@ -949,14 +1084,22 @@ export default function Orders() {
                             <tbody>
                                 {currentOrders.length > 0 ? (
                                     currentOrders.map((order) => (
-                                        <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
+                                        <tr key={order.id} className={`bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150 ${order.type === 'custom' ? 'border-l-4 border-blue-500 bg-blue-50/50' : ''}`}>
                                             <td className="p-4 font-medium text-gray-900">{order.id}</td>
                                             <td className="p-4">{getCustomerName(order)}</td>
-                                            <td className="p-4">{getProductName(order)}</td>
+                                            <td className="p-4">
+                                                <OrderTypeBadge type={order.type || 'regular'} />
+                                            </td>
+                                            <td className="p-4">
+                                                {getProductName(order)}
+                                                {order.type === 'custom' && (
+                                                    <div className="mt-1">
+                                                        <span className="text-xs text-blue-600 font-medium">Custom specifications</span>
+                                                    </div>
+                                                )}
+                                            </td>
                                             <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
                                             <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
-                                            
-                                            
                                             <td className="p-4">
                                                 <EnhancedStatusBadge 
                                                     status={order.status} 
@@ -965,7 +1108,6 @@ export default function Orders() {
                                                     currentStatus={order.status}
                                                 />
                                             </td>
-                                           
                                             <td className="p-4">
                                                 <button
                                                     onClick={() => handleViewOrder(order)}
@@ -978,7 +1120,7 @@ export default function Orders() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="7" className="p-6 text-center text-gray-500">
+                                        <td colSpan="8" className="p-6 text-center text-gray-500">
                                             No orders found matching your criteria.
                                         </td>
                                     </tr>

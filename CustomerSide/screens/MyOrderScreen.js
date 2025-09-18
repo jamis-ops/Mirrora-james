@@ -1,3 +1,4 @@
+// screens/MyOrderScreen.js
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
 import { db, auth } from '../Backend/firebaseConfig';
@@ -46,14 +47,37 @@ const MyOrderScreen = () => {
                     const orderData = doc.data();
                     console.log("Order data:", orderData);
 
+                    // Handle both regular and custom orders
+                    let orderItems = [];
+                    if (orderData.type === 'custom') {
+                        // Custom order structure
+                        orderItems = [{
+                         id: `custom-${orderData.orderId}`,
+                        name: orderData.customizationDetails?.productInfo?.name || "Custom Mirror",
+                        price: orderData.total || 0,
+                        quantity: 1,
+                        imageUrl: orderData.customizationDetails?.productInfo?.imageUrl || 
+                                orderData.customizationDetails?.referenceImages?.[0] || 
+                                'https://via.placeholder.com/150',
+                        size: orderData.customizationDetails?.dimensions ? 
+                            `${orderData.customizationDetails.dimensions.height} × ${orderData.customizationDetails.dimensions.width} cm` : 
+                        'Custom size'
+                     }];
+                 } else {
+                    // Regular order structure
+                     orderItems = orderData.items || [];
+                }
+
                     return {
                         id: doc.id,
                         createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
-                        items: orderData.items || [],
+                        items: orderItems,
                         status: orderData.status ? orderData.status.toLowerCase() : 'unknown',
                         total: orderData.total || 0,
                         userId: orderData.userID,
-                        paymentMethod: orderData.paymentMethod || 'Not specified'
+                        paymentMethod: orderData.paymentMethod || 'Not specified',
+                        type: orderData.type || 'regular', // Add type to distinguish
+                        orderId: orderData.orderId || doc.id // Use custom orderId if available
                     };
                 });
 
@@ -260,13 +284,17 @@ const MyOrderScreen = () => {
             ) : (
                 filteredOrders.map((order) => {
                     const hasReviewed = hasUserReviewedOrder(order.id) || hasUserReviewedOrderProducts(order);
+                    const orderNumber = order.orderId || order.id.substring(0, 8);
                     
                     return (
                         <View key={order.id} style={styles.orderCard}>
                             <View style={styles.orderHeader}>
                                 <View style={styles.orderHeaderLeft}>
-                                    <Text style={styles.orderId}>Order #{order.id.substring(0, 8)}</Text>
+                                    <Text style={styles.orderId}>Order #{orderNumber}</Text>
                                     <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+                                    {order.type === 'custom' && (
+                                        <Text style={styles.customBadge}>Custom Order</Text>
+                                    )}
                                 </View>
                                 <Text style={[styles.statusText, { color: getStatusColor(order.status) }]}>
                                     {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
@@ -284,6 +312,9 @@ const MyOrderScreen = () => {
                                         <Text style={styles.itemName}>{item.name}</Text>
                                         {item.size && <Text style={styles.itemSize}>Size: {item.size}</Text>}
                                         <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
+                                        {order.type === 'custom' && (
+                                            <Text style={styles.customNote}>Custom order - see details for specifications</Text>
+                                        )}
                                     </View>
                                     <Text style={styles.itemPrice}>₱{item.price.toLocaleString()}</Text>
                                 </View>
@@ -442,6 +473,17 @@ const styles = StyleSheet.create({
     orderDate: {
         fontSize: 12,
         color: '#999',
+        marginBottom: 4,
+    },
+    customBadge: {
+        fontSize: 12,
+        color: '#A68B69',
+        fontWeight: 'bold',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        backgroundColor: 'rgba(166, 139, 105, 0.1)',
+        borderRadius: 4,
+        alignSelf: 'flex-start',
     },
     statusText: {
         fontWeight: 'bold',
@@ -483,6 +525,12 @@ const styles = StyleSheet.create({
     itemQuantity: {
         fontSize: 13,
         color: '#666',
+    },
+    customNote: {
+        fontSize: 12,
+        color: '#A68B69',
+        fontStyle: 'italic',
+        marginTop: 4,
     },
     itemPrice: {
         fontSize: 16,

@@ -1,4 +1,3 @@
-// screens/CustomizationScreen.js
 import React, { useState } from "react";
 import {
   View,
@@ -191,13 +190,12 @@ export default function CustomizationScreen() {
       // Format customization data for the chat message
       const customizationSummary = formatCustomizationSummary(formData, product);
       
-      // Create seller chat thread reference (using a seller ID - you'll need to implement seller assignment logic)
-      const sellerId = 'mirrora-seller'; // This should be dynamic based on product or region
-      const sellerChatRef = doc(db, `artifacts/${appId}/public/data/chats/${sellerId}`);
-      const sellerMessagesRef = collection(sellerChatRef, 'messages');
+      // Use the user's chat thread (same as ChatScreen)
+      const userChatRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
+      const userMessagesRef = collection(userChatRef, 'messages');
       
-      // Update seller chat thread
-      await setDoc(sellerChatRef, {
+      // Update user chat thread
+      await setDoc(userChatRef, {
         lastMessage: `New customization request from ${userName}`,
         timestamp: serverTimestamp(),
         userName: userName,
@@ -207,8 +205,8 @@ export default function CustomizationScreen() {
         hasCustomizationRequest: true,
       }, { merge: true });
 
-      // Send customization message to seller
-      await addDoc(sellerMessagesRef, {
+      // Send customization message to user's chat thread
+      await addDoc(userMessagesRef, {
         text: customizationSummary,
         timestamp: serverTimestamp(),
         senderId: user.uid,
@@ -234,7 +232,6 @@ export default function CustomizationScreen() {
       await addDoc(customizationRequestsRef, {
         customerId: user.uid,
         customerName: userName,
-        sellerId: sellerId,
         productInfo: {
           id: product.id,
           name: product.name,
@@ -253,8 +250,8 @@ export default function CustomizationScreen() {
         text2: "The seller will review your request and contact you soon.",
       });
 
-      // Navigate back or to a confirmation screen
-      navigation.goBack();
+      // Navigate to ChatScreen to show the conversation
+      navigation.navigate('ChatScreen');
 
     } catch (error) {
       console.error("Error sending customization request:", error);

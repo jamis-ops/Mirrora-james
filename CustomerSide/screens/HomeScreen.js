@@ -13,7 +13,7 @@ import {
   TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import Toast from "react-native-toast-message";
 
@@ -28,6 +28,8 @@ import {
   serverTimestamp,
   query,
   where,
+  onSnapshot,
+  orderBy,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
@@ -62,12 +64,14 @@ const safeImageSource = (src) => {
 
 export default function HomeScreen() {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
 
   const [activeBanner, setActiveBanner] = useState(0);
   const [products, setProducts] = useState([]);
   const [banners, setBanners] = useState([]);
   const [tempClicked, setTempClicked] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0); // NEW: Track unread messages
 
   // Load fonts
   const [leagueSpartanLoaded] = useLeagueSpartan({
@@ -77,6 +81,45 @@ export default function HomeScreen() {
     Montserrat_400Regular,
     Montserrat_600SemiBold,
   });
+
+  // NEW: Listen for new support messages
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    // Listen for support chats where the user is a participant
+    const supportChatsQuery = query(
+      collection(db, "supportChats"),
+      where("participants", "array-contains", user.uid),
+      orderBy("lastUpdated", "desc")
+    );
+
+    const unsubscribe = onSnapshot(supportChatsQuery, (snapshot) => {
+      let count = 0;
+      
+      snapshot.forEach((doc) => {
+        const chatData = doc.data();
+        // Check if the user has unread messages in this chat
+        if (chatData.lastRead && chatData.lastRead[user.uid]) {
+          const lastRead = chatData.lastRead[user.uid].toDate();
+          const lastMessageTime = chatData.lastUpdated.toDate();
+          
+          if (lastMessageTime > lastRead) {
+            count++;
+          }
+        } else if (chatData.lastUpdated) {
+          // If user has never read this chat, count it as unread
+          count++;
+        }
+      });
+      
+      setUnreadCount(count);
+    }, (error) => {
+      console.error("Error listening for support chats:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isFocused]);
 
   // Fetch banners
   useEffect(() => {
@@ -240,8 +283,17 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle}>Mirrora Philippines</Text>
             <TouchableOpacity
               onPress={() => navigation.navigate("MessageScreen")}
+              style={styles.messageIconContainer}
             >
               <Icon name="chat-processing" size={24} color="#A68B69" />
+              {/* NEW: Notification badge */}
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
           <View style={styles.searchContainer}>
@@ -408,6 +460,25 @@ const styles = StyleSheet.create({
     fontFamily: "LeagueSpartan_700Bold",
     fontSize: 22,
     color: "#000",
+  },
+  messageIconContainer: {
+    position: "relative", // NEW: For positioning the badge
+  },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "red",
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 10,
+    fontWeight: "bold",
   },
   searchContainer: {
     flexDirection: "row",
