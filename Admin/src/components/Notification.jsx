@@ -1,4 +1,3 @@
-// src/components/Notification.jsx
 
 import React from "react";
 import { Info, X } from "lucide-react";

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle } from "lucide-react";
+import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle, MapPin } from "lucide-react";
 
 import { db } from "../../Backend/firebaseConfig.js";
-import { collection, getDocs, doc, updateDoc, getDoc, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc, getDoc, query, orderBy, limit, where } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
@@ -19,6 +19,13 @@ export const formatCurrency = (amount) => {
         currency: 'PHP',
         minimumFractionDigits: 2,
     }).format(amount);
+};
+
+// Generate a display-only order ID (different from Firebase ID)
+const generateDisplayOrderId = () => {
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `ORD-${timestamp}-${random}`;
 };
 
 // Confirmation Modal Component
@@ -173,7 +180,10 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     const formatDateTime = useCallback((dateStr, timeStr) => {
         try {
             let date;
-            if (dateStr && dateStr.includes('/')) {
+            if (dateStr && typeof dateStr === 'object' && dateStr.seconds) {
+                // Handle Firebase Timestamp
+                date = new Date(dateStr.seconds * 1000);
+            } else if (dateStr && dateStr.includes('/')) {
                 const [month, day, year] = dateStr.split('/');
                 date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')} ${timeStr || '00:00'}`);
             } else if (dateStr && dateStr.includes('-')) {
@@ -196,9 +206,9 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
         }
     }, []);
 
-    const totalAmount = parseFloat(order.amount?.toString().replace(/[₱,]/g, '') || order.price?.toString().replace(/[₱,]/g, '') || '0');
-    const downpaymentAmount = totalAmount * 0.5;
-    const remainingAmount = totalAmount - downpaymentAmount;
+    const totalAmount = parseFloat(order.total?.toString().replace(/[₱,]/g, '') || order.amount?.toString().replace(/[₱,]/g, '') || order.price?.toString().replace(/[₱,]/g, '') || '0');
+    const downpaymentAmount = order.downPayment || totalAmount * 0.5;
+    const remainingAmount = order.remainingPayment || totalAmount - downpaymentAmount;
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -239,15 +249,15 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-1">Order ID</label>
-                                <p className="text-xl font-bold text-gray-900">{order.id}</p>
+                                <p className="text-xl font-bold text-gray-900">{order.displayId || order.id}</p>
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-1">Order Date & Time</label>
-                                <p className="text-gray-900 font-medium">{formatDateTime(order.date, order.time)}</p>
+                                <p className="text-gray-900 font-medium">{formatDateTime(order.createdAt || order.orderDate, order.orderTime)}</p>
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-1">Payment Method</label>
-                                <p className="text-gray-900 font-medium">{order.paymentMethod || 'N/A'}</p>
+                                <p className="text-gray-900 font-medium">{order.paymentMethod || 'Bank Transfer'}</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
@@ -256,8 +266,8 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                 <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} currentStatus={order.status} />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
-                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
-                                <EnhancedPaymentBadge payment={order.payment} orderId={order.id} onUpdate={onUpdatePayment} />
+                                                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
+                                <EnhancedPaymentBadge payment={order.payment || 'pending'} orderId={order.id} onUpdate={onUpdatePayment} />
                             </div>
                         </div>
                     </div>
@@ -276,7 +286,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Customer Name</label>
-                                        <p className="text-lg font-semibold text-gray-900">{order.customer?.name || order.customerName || 'N/A'}</p>
+                                        <p className="text-lg font-semibold text-gray-900">{order.customerName || order.customer?.name || order.userName || order.userInfo?.name || 'N/A'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -287,7 +297,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Email Address</label>
-                                        <p className="text-gray-900 font-medium">{order.customer?.email || order.customerEmail || order.email || 'N/A'}</p>
+                                        <p className="text-gray-900 font-medium">{order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || 'N/A'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -300,7 +310,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     </div>
                                     <div>
                                         <label className="text-sm font-medium text-gray-500">Contact Number</label>
-                                        <p className="text-gray-900 font-medium">{order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || 'N/A'}</p>
+                                        <p className="text-gray-900 font-medium">{order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || 'N/A'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -309,32 +319,71 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
 
                     {/* Product Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <Package className="w-5 h-5 text-[#A68B69]" />
                             Product Details
                         </h3>
                         <div className="bg-white rounded-xl p-6 shadow-sm">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="md:col-span-2">
-                                    <label className="text-sm font-medium text-gray-500 block mb-1">Product Name</label>
-                                    <p className="text-xl font-semibold text-gray-900 mb-3">{order.product || order.productName || 'N/A'}</p>
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
-                                        <div className="bg-gray-50 p-3 rounded-lg">
-                                            <span className="text-gray-600">Quantity:</span>
-                                            <p className="font-semibold text-gray-900">{order.quantity || '1'}</p>
+                            {order.items && order.items.length > 0 ? (
+                                order.items.map((item, index) => (
+                                    <div key={index} className="mb-6 last:mb-0">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="md:col-span-2">
+                                                <label className="text-sm font-medium text-gray-500 block mb-1">Product Name</label>
+                                                <p className="text-xl font-semibold text-gray-900 mb-3">{item.name || 'N/A'}</p>
+                                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <span className="text-gray-600">Quantity:</span>
+                                                        <p className="font-semibold text-gray-900">{item.quantity || '1'}</p>
+                                                    </div>
+                                                    <div className="bg-gray-50 p-3 rounded-lg">
+                                                        <span className="text-gray-600">Price:</span>
+                                                        <p className="font-semibold text-gray-900">{formatCurrency(item.price || 0)}</p>
+                                                    </div>
+                                                    {item.size && (
+                                                        <div className="bg-gray-50 p-3 rounded-lg">
+                                                            <span className="text-gray-600">Size:</span>
+                                                            <p className="font-semibold text-gray-900">{item.size}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-center">
+                                                <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center overflow-hidden">
+                                                    {item.imageUrl ? (
+                                                        <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <Package className="w-8 h-8 text-gray-400" />
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="bg-gray-50 p-3 rounded-lg">
-                                            <span className="text-gray-600">Total Amount:</span>
-                                            <p className="font-bold text-[#A68B69] text-lg">{formatCurrency(totalAmount)}</p>
+                                        {index < order.items.length - 1 && <hr className="my-6 border-gray-200" />}
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="md:col-span-2">
+                                        <label className="text-sm font-medium text-gray-500 block mb-1">Product Name</label>
+                                        <p className="text-xl font-semibold text-gray-900 mb-3">{order.product || order.productName || 'N/A'}</p>
+                                        <div className="grid grid-cols-2 gap-4 text-sm">
+                                            <div className="bg-gray-50 p-3 rounded-lg">
+                                                <span className="text-gray-600">Quantity:</span>
+                                                <p className="font-semibold text-gray-900">{order.quantity || order.items?.[0]?.quantity || '1'}</p>
+                                            </div>
+                                            <div className="bg-gray-50 p-3 rounded-lg">
+                                                <span className="text-gray-600">Total Amount:</span>
+                                                <p className="font-bold text-[#A68B69] text-lg">{formatCurrency(totalAmount)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-center">
+                                        <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center">
+                                            <Package className="w-8 h-8 text-gray-400" />
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-center">
-                                    <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center">
-                                        <Package className="w-8 h-8 text-gray-400" />
-                                    </div>
-                                </div>
-                            </div>
+                            )}
                         </div>
                     </div>
 
@@ -414,12 +463,12 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     </div>
 
-                    {/* Downpayment Details Card */}
-                    {order.payment === 'partial' || order.payment === 'paid' ? (
+                    {/* Payment Details Card - Show reference code and bank type */}
+                    {(order.payment === 'partial' || order.payment === 'paid' || order.referenceNumber || order.bankDetails) && (
                         <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                                 <CreditCard className="w-5 h-5 text-[#A68B69]" />
-                                Downpayment Details
+                                Payment Details
                             </h3>
                             <div className="bg-white rounded-xl p-6 shadow-sm">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -429,15 +478,25 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                                 <span className="text-green-800 font-medium">Bank Type</span>
                                             </div>
                                             <p className="text-lg font-bold text-green-900">
-                                                {order.bankType || order.paymentDetails?.bankType || 'N/A'}
+                                                {order.bankDetails?.fullName || order.bankType || order.paymentDetails?.bankType || order.paymentMethod || 'N/A'}
                                             </p>
                                         </div>
-                                        <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-blue-800 font-medium">Reference Number</span>
+                                        {order.bankDetails?.accountNumber && (
+                                            <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
+                                                <div className="flex justify-between items-center mb-2">
+                                                                                                        <span className="text-blue-800 font-medium">Account Number</span>
+                                                </div>
+                                                <p className="text-lg font-bold text-blue-900">
+                                                    {order.bankDetails.accountNumber}
+                                                </p>
                                             </div>
-                                            <p className="text-lg font-bold text-blue-900">
-                                                {order.refNumber || order.paymentDetails?.refNumber || 'N/A'}
+                                        )}
+                                        <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-500">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-purple-800 font-medium">Reference Number</span>
+                                            </div>
+                                            <p className="text-lg font-bold text-purple-900">
+                                                {order.referenceNumber || order.paymentDetails?.refNumber || order.refNumber || 'N/A'}
                                             </p>
                                         </div>
                                     </div>
@@ -448,12 +507,69 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                         </h4>
                                         <p className="text-sm text-gray-600">
                                             Verify the payment details with the provided reference number and bank information.
+                                            {order.downPayment && (
+                                                <>
+                                                    <br />
+                                                    <span className="font-semibold">Down Payment: {formatCurrency(order.downPayment)}</span>
+                                                </>
+                                            )}
+                                            {order.remainingPayment && (
+                                                <>
+                                                    <br />
+                                                    <span className="font-semibold">Remaining Balance: {formatCurrency(order.remainingPayment)}</span>
+                                                </>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    ) : null}
+                    )}
+
+                    {/* Delivery Address Card */}
+                    {order.deliveryAddress && (
+                        <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                <Package className="w-5 h-5 text-[#A68B69]" />
+                                Delivery Address
+                            </h3>
+                            <div className="bg-white rounded-xl p-6 shadow-sm">
+                                <div className="space-y-4">
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-5 h-5 text-[#A68B69] mt-1">
+                                            <User className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Recipient Name</p>
+                                            <p className="font-medium">{order.deliveryAddress.fullName}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-5 h-5 text-[#A68B69] mt-1">
+                                            <Phone className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Phone Number</p>
+                                            <p className="font-medium">{order.deliveryAddress.phoneNumber}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-4">
+                                        <div className="w-5 h-5 text-[#A68B69] mt-1">
+                                            <MapPin className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Delivery Address</p>
+                                            <p className="font-medium">{order.deliveryAddress.completeAddress}</p>
+                                            {order.deliveryAddress.landmark && (
+                                                <p className="text-sm text-gray-600">Landmark: {order.deliveryAddress.landmark}</p>
+                                            )}
+                                            <p className="text-sm text-gray-600">Postal Code: {order.deliveryAddress.postalCode}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Order Summary Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
@@ -468,7 +584,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     <span className="font-semibold text-gray-900">{formatCurrency(totalAmount)}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                                    <span className="text-gray-600 font-medium">Shipping Fee</span>
+                                                                        <span className="text-gray-600 font-medium">Shipping Fee</span>
                                     <span className="font-semibold text-gray-900">
                                         {order.shippingFee ? formatCurrency(order.shippingFee) : 'FREE'}
                                     </span>
@@ -510,40 +626,82 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
 
 // Helper function to extract customer name from order
 const getCustomerName = (order) => {
-    // Check all possible locations where customer name might be stored
-    if (order.customer?.name) return order.customer.name;
     if (order.customerName) return order.customerName;
-    if (order.items && order.items[0]?.name) return order.items[0].name;
-    if (order.shippingInfo?.name) return order.shippingInfo.name;
+    if (order.customer?.name) return order.customer.name;
+    if (order.userName) return order.userName;
     if (order.userInfo?.name) return order.userInfo.name;
+    if (order.shippingInfo?.name) return order.shippingInfo.name;
     return 'N/A';
 };
 
 // Helper function to extract product name from order
 const getProductName = (order) => {
+    if (order.items && order.items.length > 0) {
+        if (order.items.length === 1) {
+            return order.items[0].name;
+        } else {
+            return `${order.items[0].name} and ${order.items.length - 1} more`;
+        }
+    }
     if (order.product) return order.product;
     if (order.productName) return order.productName;
-    if (order.items && order.items[0]?.productName) return order.items[0].productName;
-    if (order.items && order.items[0]?.name) return order.items[0].name;
     return 'N/A';
 };
 
 // Helper function to extract total amount from order
 const getTotalAmount = (order) => {
+    if (order.total) return order.total;
     if (order.amount) return order.amount;
     if (order.price) return order.price;
     if (order.items && order.items[0]?.total) return order.items[0].total;
-    if (order.total) return order.total;
     return '0';
 };
 
 // Helper function to extract order date from order
 const getOrderDate = (order) => {
+    if (order.createdAt) return order.createdAt;
     if (order.date) return order.date;
     if (order.orderDate) return order.orderDate;
-    if (order.createdAt) return order.createdAt;
     if (order.timestamp) return order.timestamp;
     return 'N/A';
+};
+
+// Helper function to check if an order is customized
+const isCustomizedOrder = (order) => {
+    // Check for custom fields that indicate a customized order
+    return order.isCustomized || 
+           order.customizationDetails || 
+           order.customOptions || 
+           (order.items && order.items.some(item => item.isCustomized || item.size)); // Check for size as customization indicator
+};
+
+// Helper function to get timestamp from order for sorting
+const getOrderTimestamp = (order) => {
+    // Try to get a timestamp from various possible fields
+    if (order.createdAt && typeof order.createdAt === 'object' && order.createdAt.seconds) {
+        return order.createdAt.seconds * 1000; // Convert Firebase timestamp to milliseconds
+    }
+    if (order.timestamp && typeof order.timestamp === 'object' && order.timestamp.seconds) {
+        return order.timestamp.seconds * 1000;
+    }
+    if (order.orderDate) {
+        try {
+            // Try to parse date string
+            const date = new Date(order.orderDate);
+            return isNaN(date.getTime()) ? 0 : date.getTime();
+        } catch (error) {
+            return 0;
+        }
+    }
+    if (order.date) {
+        try {
+            const date = new Date(order.date);
+            return isNaN(date.getTime()) ? 0 : date.getTime();
+        } catch (error) {
+            return 0;
+        }
+    }
+    return 0; // Default if no date can be found
 };
 
 // Main Orders Component
@@ -555,6 +713,7 @@ export default function Orders() {
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+    const [activeTab, setActiveTab] = useState("all"); // "all" or "customized"
     const ordersPerPage = 5;
     
     // State for confirmation modals
@@ -606,15 +765,30 @@ export default function Orders() {
             const ordersSnapshot = await getDocs(ordersCollectionRef);
             const ordersList = ordersSnapshot.docs.map(doc => ({
                 id: doc.id,
+                displayId: generateDisplayOrderId(), // Generate a display-only ID
                 ...doc.data()
             }));
-            setOrders(ordersList);
+            
+            // Sort orders: newest first, but delivered orders at the end
+            const sortedOrders = ordersList.sort((a, b) => {
+                // Get timestamps for both orders
+                const aTimestamp = getOrderTimestamp(a);
+                const bTimestamp = getOrderTimestamp(b);
+                
+                // If both are delivered or both are not delivered, sort by timestamp (newest first)
+                if ((a.status === 'delivered') === (b.status === 'delivered')) {
+                    return bTimestamp - aTimestamp; // Newest first
+                }
+                
+                // If only one is delivered, put it at the end
+                return a.status === 'delivered' ? 1 : -1;
+            });
+            
+            setOrders(sortedOrders);
             
             // Debug: Log the first order to see its structure
             if (ordersList.length > 0) {
                 console.log("First order structure:", ordersList[0]);
-                console.log("Order date field:", ordersList[0].date);
-                console.log("Order timestamp field:", ordersList[0].timestamp);
             }
         } catch (error) {
             console.error("Error fetching orders:", error);
@@ -632,6 +806,7 @@ export default function Orders() {
             if (orderDoc.exists()) {
                 const orderData = {
                     id: orderDoc.id,
+                    displayId: generateDisplayOrderId(), // Generate a display-only ID
                     ...orderDoc.data()
                 };
                 setSelectedOrder(orderData);
@@ -652,17 +827,24 @@ export default function Orders() {
     // Memoized calculations to avoid re-calculating on every render
     const filteredOrders = useMemo(() => {
         return orders.filter((order) => {
+            // Filter by tab (all orders or customized orders)
+            if (activeTab === "customized" && !isCustomizedOrder(order)) {
+                return false;
+            }
+            
             const customerName = getCustomerName(order);
-            const customerEmail = order.customer?.email || order.customerEmail || order.email || '';
-            const customerPhone = order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || '';
+            const customerEmail = order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || '';
+            const customerPhone = order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || '';
 
             const matchesSearch =
                 order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                order.displayId.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 customerPhone.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 getProductName(order).toLowerCase().includes(searchQuery.toLowerCase()) ||
-                getTotalAmount(order).toString().toLowerCase().includes(searchQuery.toLowerCase());
+                getTotalAmount(order).toString().toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (order.referenceNumber && order.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase()));
 
             // Fixed: Case-insensitive status matching
             const matchesStatus = statusFilter === "All Status" || 
@@ -670,7 +852,7 @@ export default function Orders() {
             
             return matchesSearch && matchesStatus;
         });
-    }, [orders, searchQuery, statusFilter]);
+    }, [orders, searchQuery, statusFilter, activeTab]);
 
     // Pagination logic
     const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
@@ -684,64 +866,8 @@ export default function Orders() {
         processing: orders.filter((o) => o.status && o.status.toLowerCase() === "processing").length,
         shipped: orders.filter((o) => o.status && o.status.toLowerCase() === "shipped").length,
         delivered: orders.filter((o) => o.status && o.status.toLowerCase() === "delivered").length,
+        customized: orders.filter(isCustomizedOrder).length,
     }), [orders]);
-
-    // FIXED: Calculate revenue from delivered AND paid orders
-    const totalRevenue = useMemo(() => {
-        return orders
-            .filter(order => 
-                order.status && order.status.toLowerCase() === "delivered" && 
-                order.payment && (order.payment.toLowerCase() === "paid" || order.payment.toLowerCase() === "partial")
-            )
-            .reduce((sum, order) => {
-                const amount = getTotalAmount(order);
-                let numericAmount = 0;
-                
-                // Handle different amount formats
-                if (typeof amount === 'string') {
-                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
-                } else if (typeof amount === 'number') {
-                    numericAmount = amount;
-                }
-                
-                // If payment is partial, only count 50% of the amount
-                if (order.payment && order.payment.toLowerCase() === "partial") {
-                    return sum + (numericAmount * 0.5);
-                }
-                
-                return sum + numericAmount;
-            }, 0);
-    }, [orders]);
-
-    // Calculate total collected revenue (all paid orders regardless of status)
-    const totalCollected = useMemo(() => {
-        return orders
-            .filter(order => order.payment && (order.payment.toLowerCase() === "paid" || order.payment.toLowerCase() === "partial"))
-            .reduce((sum, order) => {
-                const amount = getTotalAmount(order);
-                let numericAmount = 0;
-                
-                if (typeof amount === 'string') {
-                    numericAmount = parseFloat(amount.replace(/[₱,]/g, '')) || 0;
-                } else if (typeof amount === 'number') {
-                    numericAmount = amount;
-                }
-                
-                if (order.payment && order.payment.toLowerCase() === "partial") {
-                    return sum + (numericAmount * 0.5);
-                }
-                
-                return sum + numericAmount;
-            }, 0);
-    }, [orders]);
-
-    // Debug useEffect to check order counts and revenue
-    useEffect(() => {
-        console.log("Order counts:", orderCounts);
-        console.log("Total revenue from delivered orders:", totalRevenue);
-        console.log("Total collected revenue:", totalCollected);
-        console.log("Delivered orders:", orders.filter((o) => o.status && o.status.toLowerCase() === "delivered"));
-    }, [orders, orderCounts, totalRevenue, totalCollected]);
 
     const handleViewOrder = (order) => {
         // Fetch detailed order data when viewing order details
@@ -767,7 +893,7 @@ export default function Orders() {
             type: 'payment',
             orderId,
             newValue: newPaymentStatus,
-            currentValue: order.payment
+            currentValue: order.payment || 'pending'
         });
         setShowPaymentConfirm(true);
     };
@@ -777,7 +903,26 @@ export default function Orders() {
         try {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { status: newStatus });
-            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, status: newStatus } : order));
+            
+            // Update local state and re-sort orders
+            setOrders(prevOrders => {
+                const updatedOrders = prevOrders.map(order => 
+                    order.id === orderId ? { ...order, status: newStatus } : order
+                );
+                
+                // Re-sort orders after status change
+                return updatedOrders.sort((a, b) => {
+                    const aTimestamp = getOrderTimestamp(a);
+                    const bTimestamp = getOrderTimestamp(b);
+                    
+                    if ((a.status === 'delivered') === (b.status === 'delivered')) {
+                        return bTimestamp - aTimestamp;
+                    }
+                    
+                    return a.status === 'delivered' ? 1 : -1;
+                });
+            });
+            
             setShowStatusConfirm(false);
             
             // Refresh the selected order if it's the one being updated
@@ -787,6 +932,7 @@ export default function Orders() {
                 if (updatedOrderDoc.exists()) {
                     setSelectedOrder({
                         id: updatedOrderDoc.id,
+                        displayId: selectedOrder.displayId, // Preserve the display ID
                         ...updatedOrderDoc.data()
                     });
                 }
@@ -812,6 +958,7 @@ export default function Orders() {
                 if (updatedOrderDoc.exists()) {
                     setSelectedOrder({
                         id: updatedOrderDoc.id,
+                        displayId: selectedOrder.displayId, // Preserve the display ID
                         ...updatedOrderDoc.data()
                     });
                 }
@@ -831,19 +978,24 @@ export default function Orders() {
 
         // Flatten orders for Excel
         const exportData = filteredOrders.map(order => ({
-            OrderID: order.id,
+            OrderID: order.displayId || order.id,
             CustomerName: getCustomerName(order),
-            Email: order.customer?.email || order.customerEmail || order.email || "N/A",
-            Phone: order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || "N/A",
+            Email: order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || "N/A",
+            Phone: order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || "N/A",
             Product: getProductName(order),
-            Quantity: order.items?.[0]?.quantity || order.quantity || 1,
+            Quantity: order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || order.quantity || 1,
             TotalAmount: getTotalAmount(order),
+            DownPayment: order.downPayment || 0,
+            RemainingPayment: order.remainingPayment || 0,
             Status: order.status || "N/A",
             Payment: order.payment || "N/A",
+            Bank: order.bankDetails?.fullName || "N/A",
+            ReferenceNumber: order.referenceNumber || "N/A",
             Date: getOrderDate(order) || "N/A",
+            Customized: isCustomizedOrder(order) ? "Yes" : "No",
         }));
 
-        const worksheet = XLSX.utils.json_to_sheet(exportData);
+                const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
 
@@ -875,18 +1027,22 @@ export default function Orders() {
                             </h1>
                             <p className="text-gray-600 text-lg">Track and manage all your customer orders with ease</p>
                         </div>
-                        <div className="flex items-center gap-6">
-                            <div className="text-right">
-                                <p className="text-sm font-medium text-gray-500 mb-1">Revenue from Delivered Orders</p>
-                                <p className="text-3xl font-bold text-[#A68B69]">
-                                    {formatCurrency(totalRevenue)}
-                                </p>
-                                <p className="text-xs text-gray-500">From delivered and paid orders</p>
-                            </div>
-                            <div className="w-16 h-16 bg-[#A68B69] rounded-2xl flex items-center justify-center shadow-lg">
-                                <TrendingUp className="w-8 h-8 text-white" />
-                            </div>
-                        </div>
+                    </div>
+
+                    {/* Tab Navigation */}
+                    <div className="flex border-b border-gray-200 mb-6">
+                        <button
+                            className={`py-3 px-6 font-medium text-sm rounded-t-lg transition-all duration-200 ${activeTab === "all" ? "bg-white text-[#A68B69] border-t-2 border-l-2 border-r-2 border-[#A68B69]" : "text-gray-500 hover:text-gray-700"}`}
+                            onClick={() => setActiveTab("all")}
+                        >
+                            All Orders ({orders.length})
+                        </button>
+                        <button
+                            className={`py-3 px-6 font-medium text-sm rounded-t-lg transition-all duration-200 ${activeTab === "customized" ? "bg-white text-[#A68B69] border-t-2 border-l-2 border-r-2 border-[#A68B69]" : "text-gray-500 hover:text-gray-700"}`}
+                            onClick={() => setActiveTab("customized")}
+                        >
+                            Customized Orders ({orderCounts.customized})
+                        </button>
                     </div>
 
                     {/* Enhanced Stats Cards */}
@@ -950,7 +1106,7 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                                        <Package className="w-6 h-6 text-white" />
+                                                                                <Package className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Shipped" ? "bg-blue-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
@@ -967,7 +1123,7 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                                        <CheckCircle className="w-6 h-6 text-white" />
+                                                                                <CheckCircle className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Delivered" ? "bg-green-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
@@ -1029,6 +1185,8 @@ export default function Orders() {
                                     <th scope="col" className="p-4">Order Date</th>
                                     <th scope="col" className="p-4">Total Amount</th>
                                     <th scope="col" className="p-4">Status</th>
+                                    <th scope="col" className="p-4">Payment</th>
+                                    <th scope="col" className="p-4">Type</th>
                                     <th scope="col" className="p-4 rounded-tr-xl">Actions</th>
                                 </tr>
                             </thead>
@@ -1036,20 +1194,33 @@ export default function Orders() {
                                 {currentOrders.length > 0 ? (
                                     currentOrders.map((order) => (
                                         <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
-                                            <td className="p-4 font-medium text-gray-900">{order.id}</td>
+                                            <td className="p-4 font-medium text-gray-900">{order.displayId || order.id}</td>
                                             <td className="p-4">{getCustomerName(order)}</td>
                                             <td className="p-4">{getProductName(order)}</td>
                                             <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
                                             <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
                                             
-                                            
                                             <td className="p-4">
                                                 <EnhancedStatusBadge 
-                                                    status={order.status} 
+                                                    status={order.status || 'pending'} 
                                                     orderId={order.id} 
                                                     onUpdate={handleStatusUpdateRequest}
-                                                    currentStatus={order.status}
+                                                    currentStatus={order.status || 'pending'}
                                                 />
+                                            </td>
+                                           
+                                            <td className="p-4">
+                                                <EnhancedPaymentBadge 
+                                                    payment={order.payment || 'pending'} 
+                                                    orderId={order.id} 
+                                                    onUpdate={handlePaymentUpdateRequest}
+                                                />
+                                            </td>
+                                           
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${isCustomizedOrder(order) ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                    {isCustomizedOrder(order) ? 'Customized' : 'Standard'}
+                                                </span>
                                             </td>
                                            
                                             <td className="p-4">
@@ -1064,7 +1235,7 @@ export default function Orders() {
                                     ))
                                 ) : (
                                     <tr>
-                                        <td colSpan="7" className="p-6 text-center text-gray-500">
+                                        <td colSpan="9" className="p-6 text-center text-gray-500">
                                             No orders found matching your criteria.
                                         </td>
                                     </tr>

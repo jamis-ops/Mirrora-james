@@ -28,6 +28,9 @@ import {
   serverTimestamp,
   query,
   where,
+  onSnapshot,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
@@ -62,11 +65,7 @@ const safeImageSource = (src) => {
 
 // Categories
 const CATEGORIES = [
-  "Grid Mirrors",
-  "Capsule Mirrors",
-  "Round Mirrors",
-  "Irregular Mirrors",
-  "Arch Mirrors",
+ 
 ];
 
 // Dropdown component
@@ -104,6 +103,7 @@ export default function HomeScreen() {
   const [isDropdownVisible, setDropdownVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("Most Popular");
   const [isLoading, setIsLoading] = useState(true);
+  const [bannersLoading, setBannersLoading] = useState(true);
 
   // Fonts
   const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
@@ -112,40 +112,90 @@ export default function HomeScreen() {
     Montserrat_600SemiBold,
   });
 
-  // Fetch banners
+  // Fetch banners with real-time listener
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const bannerSnapshot = await getDocs(collection(db, "banners"));
-        const bannerList = bannerSnapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+    setBannersLoading(true);
+    
+    const unsubscribe = onSnapshot(
+      query(collection(db, "banners")),
+      (snapshot) => {
+        const bannerList = snapshot.docs
+          .map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+          .filter(banner => banner.active !== false); // Filter out inactive banners
+          
+        console.log("Banners retrieved:", bannerList); // Debug log
         setBanners(bannerList);
-      } catch (error) {
+        setBannersLoading(false);
+      },
+      (error) => {
         console.error("Error fetching banners:", error);
+        setBannersLoading(false);
       }
-    };
-    fetchData();
+    );
+
+    // Clean up the listener when component unmounts
+    return () => unsubscribe();
   }, []);
 
-  // Fetch products
+  // Fetch products based on selected category
   useEffect(() => {
     const fetchProducts = async () => {
       setIsLoading(true);
       try {
-        const productsRef = collection(db, "products");
-        let q = productsRef;
-
-        if (selectedCategory && selectedCategory !== "Most Popular") {
-          q = query(productsRef, where("category", "==", selectedCategory));
+        let productList = [];
+        
+        if (selectedCategory === "Most Popular") {
+          // Fetch most popular products based on order count
+          const ordersRef = collection(db, "orders");
+          const ordersSnapshot = await getDocs(ordersRef);
+          
+          // Count product orders
+          const productOrderCount = {};
+          
+          ordersSnapshot.forEach((orderDoc) => {
+            const orderData = orderDoc.data();
+            if (orderData.items && Array.isArray(orderData.items)) {
+              orderData.items.forEach((item) => {
+                if (item.productId) {
+                  productOrderCount[item.productId] = (productOrderCount[item.productId] || 0) + (item.quantity || 1);
+                }
+              });
+            }
+          });
+          
+          // Get all products
+          const productsRef = collection(db, "products");
+          const productsSnapshot = await getDocs(productsRef);
+          
+          // Map products with their order counts
+          productList = productsSnapshot.docs.map((d) => {
+            const productData = d.data();
+            return {
+              id: d.id,
+              ...productData,
+              orderCount: productOrderCount[d.id] || 0
+            };
+          });
+          
+          // Sort by order count (descending)
+          productList.sort((a, b) => b.orderCount - a.orderCount);
+          
+          // Limit to top 20 most popular products
+          productList = productList.slice(0, 20);
+        } else {
+          // Regular category filter
+          const productsRef = collection(db, "products");
+          const q = query(productsRef, where("category", "==", selectedCategory));
+          const productSnapshot = await getDocs(q);
+          productList = productSnapshot.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
         }
-
-        const productSnapshot = await getDocs(q);
-        const productList = productSnapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        
         setProducts(productList);
       } catch (error) {
         console.error("Error fetching products:", error);
@@ -169,8 +219,6 @@ export default function HomeScreen() {
       return;
     }
 
-    // ⭐ CORRECTED FIREBASE PATH
-    // This path must match the one in WishlistScreen.js
     const ref = doc(db, "users", user.uid, "wishlist", product.id);
 
     try {
@@ -178,7 +226,7 @@ export default function HomeScreen() {
       if (!existing.exists()) {
         await setDoc(ref, {
           productId: product.id,
-          name: product.name, // Use 'name' for consistency
+          name: product.name,
           price: product.price,
           imageUrl: product.imageUrl,
           addedAt: serverTimestamp(),
@@ -267,6 +315,37 @@ export default function HomeScreen() {
     }
   };
 
+  const handleBannerPress = (banner) => {
+    if (banner.link) {
+      // Handle different types of links
+      if (banner.link === '/customization' || banner.link === 'CustomizationScreen') {
+        // Navigate to CustomizationScreen
+        navigation.navigate('CustomizationScreen');
+      } else if (banner.link.startsWith('/')) {
+        // Internal navigation for other routes
+        const routeName = banner.link.substring(1); 
+        if (routeName) {
+          navigation.navigate(routeName);
+        }
+      } else if (banner.link.startsWith('http')) {
+        // External URL - you might want to use a WebView here
+        console.log("Opening external URL:", banner.link);
+        // For now, just log it. You can implement WebView navigation later.
+      } else if (banner.link === 'other' && banner.customLink) {
+        // Handle custom links from admin
+        if (banner.customLink.startsWith('/')) {
+          const routeName = banner.customLink.substring(1);
+          navigation.navigate(routeName);
+        } else if (banner.customLink.startsWith('http')) {
+          console.log("Opening external URL:", banner.customLink);
+        }
+      }
+    } else {
+      // Default action if no link is specified
+      navigation.navigate('CustomizationScreen');
+    }
+  };
+
   // Fonts not loaded
   if (!leagueSpartanLoaded || !montserratLoaded) {
     return (
@@ -307,63 +386,109 @@ export default function HomeScreen() {
           </View>
 
           {/* BANNERS */}
-          <FlatList
-            data={banners}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
-            onScroll={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x /
-                event.nativeEvent.layoutMeasurement.width
-              );
-              setActiveBanner(index);
-            }}
-            style={styles.bannerList}
-            renderItem={({ item }) => {
-              const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
-              return (
-                <ImageBackground
-                  source={bannerSrc}
-                  style={styles.banner}
-                  imageStyle={styles.bannerImageStyle}
-                  resizeMode="cover"
-                >
-                  <View style={styles.bannerContent}>
-                    <Text style={styles.bannerText}>Design Your Perfect</Text>
-                    <Text style={[styles.bannerText, { color: "#fff" }]}>
-                      Mirror Today
-                    </Text>
-                    <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
-                      Crafted Just for You!
-                    </Text>
-                    <TouchableOpacity style={styles.customizeButton}>
-                      <Text style={styles.customizeButtonText}>
-                        Customize Now
-                      </Text>
+          {bannersLoading ? (
+            <View style={styles.bannerLoadingContainer}>
+              <ActivityIndicator size="large" color="#A68B69" />
+              <Text style={styles.loadingText}>Loading banners...</Text>
+            </View>
+          ) : banners.length > 0 ? (
+            <>
+              <FlatList
+                data={banners}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                onScroll={(event) => {
+                  const index = Math.round(
+                    event.nativeEvent.contentOffset.x /
+                    event.nativeEvent.layoutMeasurement.width
+                  );
+                  setActiveBanner(index);
+                }}
+                style={styles.bannerList}
+                renderItem={({ item }) => {
+                  const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => handleBannerPress(item)}
+                      activeOpacity={0.9}
+                    >
+                      <ImageBackground
+                        source={bannerSrc}
+                        style={styles.banner}
+                        imageStyle={styles.bannerImageStyle}
+                        resizeMode="cover"
+                      >
+                        <View style={styles.bannerContent}>
+                          <Text style={styles.bannerText}>{item.title || "Design Your Perfect"}</Text>
+                          <Text style={[styles.bannerText, { color: "#fff" }]}>
+                            {item.subtitle || "Mirror Today"}
+                          </Text>
+                          <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
+                            {item.description || "Crafted Just for You!"}
+                          </Text>
+                          <TouchableOpacity 
+                            style={styles.customizeButton}
+                            onPress={() => handleBannerPress(item)}
+                          >
+                            <Text style={styles.customizeButtonText}>
+                              {item.buttonText || "Customize Now"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </ImageBackground>
                     </TouchableOpacity>
-                  </View>
-                </ImageBackground>
-              );
-            }}
-          />
-          <View style={styles.bannerDotsContainer}>
-            {banners.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.dot,
-                  activeBanner === index && styles.activeDot,
-                ]}
+                  );
+                }}
               />
-            ))}
+              <View style={styles.bannerDotsContainer}>
+                {banners.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.dot,
+                      activeBanner === index && styles.activeDot,
+                    ]}
+                  />
+                ))}
+              </View>
+            </>
+          ) : (
+            <View style={styles.noBannersContainer}>
+              <Text style={styles.noBannersText}>No banners available</Text>
+            </View>
+          )}
+
+          {/* CATEGORY SELECTOR */}
+          <View style={styles.categorySelector}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {CATEGORIES.map((category) => (
+                <TouchableOpacity
+                  key={category}
+                  style={[
+                    styles.categoryButton,
+                    selectedCategory === category && styles.categoryButtonActive,
+                  ]}
+                  onPress={() => setSelectedCategory(category)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryButtonText,
+                      selectedCategory === category && styles.categoryButtonTextActive,
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           {/* PRODUCTS */}
           <View style={styles.sectionHeader}>
             <View style={styles.categoryDropdownButton}>
-              <Text style={styles.sectionTitle}>Most Popular</Text>
+              <Text style={styles.sectionTitle}>{selectedCategory}</Text>
             </View>
           </View>
 
@@ -372,7 +497,7 @@ export default function HomeScreen() {
               <ActivityIndicator size="large" color="#A68B69" />
               <Text style={styles.loadingText}>Loading products...</Text>
             </View>
-          ) : (
+          ) : products.length > 0 ? (
             <FlatList
               data={products}
               keyExtractor={(item) => item.id}
@@ -408,9 +533,16 @@ export default function HomeScreen() {
                           color="#fff"
                         />
                       </TouchableOpacity>
+                      {selectedCategory === "Most Popular" && item.orderCount > 0 && (
+                        <View style={styles.popularBadge}>
+                          <Text style={styles.popularBadgeText}>
+                            {item.orderCount} sold
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.productInfo}>
-                      <Text style={styles.productName}>{item.name}</Text>
+                      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
                       <View style={styles.priceAndButton}>
                         <Text style={styles.productPrice}>₱ {item.price}</Text>
                         <TouchableOpacity
@@ -429,6 +561,14 @@ export default function HomeScreen() {
               }}
               scrollEnabled={false}
             />
+          ) : (
+            <View style={styles.noProductsContainer}>
+              <Text style={styles.noProductsText}>
+                {selectedCategory === "Most Popular" 
+                  ? "No popular products yet" 
+                  : `No products found in ${selectedCategory} category`}
+              </Text>
+            </View>
           )}
         </ScrollView>
 
@@ -527,12 +667,35 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   activeDot: { backgroundColor: "#A68B69" },
+  categorySelector: {
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+  },
+  categoryButton: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    marginHorizontal: 5,
+  },
+  categoryButtonActive: {
+    backgroundColor: "#A68B69",
+  },
+  categoryButtonText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#777",
+  },
+  categoryButtonTextActive: {
+    color: "#fff",
+    fontFamily: "Montserrat_600SemiBold",
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    marginTop: 25,
+    marginTop: 10,
     marginBottom: 10,
   },
   categoryDropdownButton: { flexDirection: "row", alignItems: "center" },
@@ -569,13 +732,30 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     padding: 5,
   },
+  popularBadge: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    backgroundColor: "#A68B69",
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  popularBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontFamily: "Montserrat_600SemiBold",
+  },
   productInfo: { padding: 10 },
-  productName: { fontFamily: "Montserrat_600SemiBold", fontSize: 14 },
+  productName: { 
+    fontFamily: "Montserrat_600SemiBold", 
+    fontSize: 14,
+    marginBottom: 5,
+  },
   priceAndButton: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
   },
   productPrice: {
     fontFamily: "Montserrat_600SemiBold",
@@ -616,6 +796,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 30,
+    height: 200,
+  },
+  bannerLoadingContainer: {
+    height: 150,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+    paddingHorizontal: 20,
   },
   loadingText: {
     fontFamily: "Montserrat_400Regular",
@@ -623,4 +811,31 @@ const styles = StyleSheet.create({
     color: "#777",
     marginTop: 10,
   },
-});
+  noBannersContainer: {
+    height: 150,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 15,
+    marginHorizontal: 20,
+  },
+  noBannersText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#777",
+  },
+  noProductsContainer: {
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  noProductsText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
+  },
+}); 

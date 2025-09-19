@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { db } from "../../Backend/firebaseConfig.js";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 const IconPlaceholder = ({ name, style }) => (
   <span style={style} aria-hidden="true">
@@ -6,11 +8,16 @@ const IconPlaceholder = ({ name, style }) => (
     {name === "business" && "🏢"}
     {name === "location" && "📍"}
     {name === "call" && "📞"}
+    {name === "telephone" && "☎️"}
     {name === "eye" && "👁️"}
     {name === "eye-off" && "👁️‍🗨️"}
     {name === "save" && "💾"}
     {name === "help" && "❓"}
     {name === "envelope" && "✉️"}
+    {name === "calendar" && "📅"}
+    {name === "close" && "❌"}
+    {name === "information-circle" && "ℹ️"}
+    {name === "image" && "🖼️"}
   </span>
 );
 
@@ -81,9 +88,78 @@ const InputField = ({
   </div>
 );
 
+// Save Modal Component
+const SaveModal = ({ isVisible, onClose, onSave, title, message }) => {
+  if (!isVisible) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-11/12 max-w-md">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">{title}</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700"
+            style={{ border: "none", background: "transparent" }}
+          >
+            <IconPlaceholder name="close" />
+          </button>
+        </div>
+        <p className="text-gray-600 mb-6">{message}</p>
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+            style={{ border: "none", cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            className="px-4 py-2 bg-[#A68B69] text-white rounded-lg hover:bg-[#8a7152] "
+            style={{ border: "none", cursor: "pointer" }}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------- Main Component ---------- */
 const Settings = () => {
   const [activeTab, setActiveTab] = useState("business");
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [modalData, setModalData] = useState({
+    title: "",
+    message: "",
+    onSave: () => {},
+  });
+
+  // ✅ Load saved data from Firestore on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const businessRef = doc(db, "settings", "businessInfo");
+        const contactRef = doc(db, "settings", "contactInfo");
+
+        const businessSnap = await getDoc(businessRef);
+        const contactSnap = await getDoc(contactRef);
+
+        if (businessSnap.exists()) {
+          setBusinessData(businessSnap.data());
+        }
+        if (contactSnap.exists()) {
+          setContactData(contactSnap.data());
+        }
+      } catch (error) {
+        console.error("Error fetching settings:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   // Password state and handlers
   const [showOldPassword, setShowOldPassword] = useState(false);
@@ -95,75 +171,103 @@ const Settings = () => {
   });
   const handlePasswordChange = (field, value) =>
     setPasswordData((prev) => ({ ...prev, [field]: value }));
-  const handlePasswordSubmit = () => {
-    if (
-      !passwordData.oldPassword ||
-      !passwordData.newPassword ||
-      !passwordData.confirmPassword
-    ) {
-      alert("Please fill in all password fields");
-      return;
-    }
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      alert("New passwords do not match");
-      return;
-    }
-    alert("Password updated successfully");
-    console.log("Password change submitted:", passwordData);
-  };
 
   // Business state and handlers
   const [businessData, setBusinessData] = useState({
     businessName: "",
+    foundedYear: "",
     location: "",
-    contactNumber: "",
-    email: "",
+    mission: "",
+    vision: "",
+    aboutUs: "", // Added About Us field
+   
   });
   const handleBusinessChange = (field, value) =>
     setBusinessData((prev) => ({ ...prev, [field]: value }));
-  const handleBusinessSubmit = () => {
-    if (
-      !businessData.businessName ||
-      !businessData.location ||
-      !businessData.contactNumber
-    ) {
-      alert("Please fill in all required business fields");
-      return;
+
+ 
+
+  const handleBusinessSave = async () => {
+    try {
+      await setDoc(doc(db, "settings", "businessInfo"), businessData);
+      setShowSaveModal(false);
+      console.log("Business information saved successfully");
+    } catch (error) {
+      console.error("Error saving business info:", error);
     }
-    alert("Business information saved successfully");
-    console.log("Business info submitted:", businessData);
   };
 
-  // FAQ state and handlers
-  const [faqData, setFaqData] = useState({
-    question: "",
-    answer: "",
-  });
-  const handleFaqChange = (field, value) =>
-    setFaqData((prev) => ({ ...prev, [field]: value }));
-  
+  const handleBusinessSubmit = () => {
+    setModalData({
+      title: "Save Business Information",
+      message:
+        "Are you sure you want to save these changes? This will update the information displayed in the About Us section.",
+      onSave: handleBusinessSave,
+    });
+    setShowSaveModal(true);
+  };
 
-  // Contact Us state and handlers
+  // Contact state and handlers
   const [contactData, setContactData] = useState({
-    address: "",
-    phone: "",
+    telephone1: "",
+    telephone2: "",
     email: "",
     supportEmail: "",
   });
   const handleContactChange = (field, value) =>
     setContactData((prev) => ({ ...prev, [field]: value }));
-  const handleContactSubmit = () => {
-    if (
-      !contactData.address ||
-      !contactData.phone ||
-      !contactData.email ||
-      !contactData.supportEmail
-    ) {
-      alert("Please fill in all contact information fields");
-      return;
+
+  const handleContactSave = async () => {
+    try {
+      await setDoc(doc(db, "settings", "contactInfo"), contactData);
+      setShowSaveModal(false);
+      console.log("Contact information saved successfully");
+    } catch (error) {
+      console.error("Error saving contact info:", error);
     }
-    alert("Contact information saved successfully");
-    console.log("Contact info submitted:", contactData);
+  };
+
+  const handleContactSubmit = () => {
+    setModalData({
+      title: "Save Contact Information",
+      message:
+        "Are you sure you want to save these changes? This will update the contact information displayed in the About Us section.",
+      onSave: handleContactSave,
+    });
+    setShowSaveModal(true);
+  };
+
+  // Password handling
+  const handlePasswordSubmit = () => {
+    setModalData({
+      title: "Update Password",
+      message: "Are you sure you want to update your password?",
+      onSave: () => {
+        if (
+          !passwordData.oldPassword ||
+          !passwordData.newPassword ||
+          !passwordData.confirmPassword
+        ) {
+          setModalData({
+            title: "Error",
+            message: "Please fill in all password fields.",
+            onSave: () => setShowSaveModal(false),
+          });
+          return;
+        }
+        if (passwordData.newPassword !== passwordData.confirmPassword) {
+          setModalData({
+            title: "Error",
+            message: "New passwords do not match.",
+            onSave: () => setShowSaveModal(false),
+          });
+          return;
+        }
+        console.log("Password updated successfully");
+        setShowSaveModal(false);
+      },
+    });
+    setShowSaveModal(true);
   };
 
   const renderContent = () => {
@@ -179,14 +283,24 @@ const Settings = () => {
                 </h2>
               </div>
               <p className="text-gray-600">
-                Manage your business details and contact information
+                Manage your core business details.
               </p>
             </div>
+            
+
+            
             <InputField
               label="Business Name"
               value={businessData.businessName}
               onChange={(val) => handleBusinessChange("businessName", val)}
               placeholder="Enter business name"
+            />
+            <InputField
+              label="Year Founded"
+              value={businessData.foundedYear}
+              onChange={(val) => handleBusinessChange("foundedYear", val)}
+              placeholder="Enter the year your business was founded"
+              icon="calendar"
             />
             <InputField
               label="Business Location"
@@ -197,17 +311,26 @@ const Settings = () => {
               multiline
             />
             <InputField
-              label="Contact Number"
-              value={businessData.contactNumber}
-              onChange={(val) => handleBusinessChange("contactNumber", val)}
-              placeholder="Enter contact number"
-              icon="call"
+              label="About Us"
+              value={businessData.aboutUs}
+              onChange={(val) => handleBusinessChange("aboutUs", val)}
+              placeholder="Tell your company's story and what makes you unique"
+              multiline
+              icon="information-circle"
             />
             <InputField
-              label="Email Address"
-              value={businessData.email}
-              onChange={(val) => handleBusinessChange("email", val)}
-              placeholder="Enter email address"
+              label="Mission Statement"
+              value={businessData.mission}
+              onChange={(val) => handleBusinessChange("mission", val)}
+              placeholder="Enter your company's mission statement"
+              multiline
+            />
+            <InputField
+              label="Vision Statement"
+              value={businessData.vision}
+              onChange={(val) => handleBusinessChange("vision", val)}
+              placeholder="Enter your company's vision statement"
+              multiline
             />
             <button
               onClick={handleBusinessSubmit}
@@ -221,7 +344,7 @@ const Settings = () => {
             </button>
           </div>
         );
-      
+
       case "contact":
         return (
           <div className="bg-[#E0DAD6] rounded-xl shadow-lg overflow-hidden mx-4 mb-6 p-6">
@@ -233,22 +356,21 @@ const Settings = () => {
                 </h2>
               </div>
               <p className="text-gray-600">
-                Manage your business contact details
+                Manage your business contact details.
               </p>
             </div>
             <InputField
-              label="Address"
-              value={contactData.address}
-              onChange={(val) => handleContactChange("address", val)}
-              placeholder="Enter your business address"
-              icon="location"
-              multiline
+              label="Telephone Number"
+              value={contactData.telephone1}
+              onChange={(val) => handleContactChange("telephone1", val)}
+              placeholder="Enter your telephone number"
+              icon="telephone"
             />
             <InputField
-              label="Phone Number"
-              value={contactData.phone}
-              onChange={(val) => handleContactChange("phone", val)}
-              placeholder="Enter your primary phone number"
+              label="Contact Number"
+              value={contactData.telephone2}
+              onChange={(val) => handleContactChange("telephone2", val)}
+              placeholder="Enter a contact number (optional)"
               icon="call"
             />
             <InputField
@@ -277,6 +399,7 @@ const Settings = () => {
             </button>
           </div>
         );
+
       case "password":
         return (
           <div className="bg-[#E0DAD6] rounded-xl shadow-lg overflow-hidden mx-4 mb-6 p-6">
@@ -373,6 +496,15 @@ const Settings = () => {
         </div>
         {renderContent()}
       </div>
+
+      {/* Save Modal */}
+      <SaveModal
+        isVisible={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onSave={modalData.onSave}
+        title={modalData.title}
+        message={modalData.message}
+      />
     </div>
   );
 };

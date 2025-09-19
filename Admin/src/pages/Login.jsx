@@ -1,9 +1,13 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, X } from "lucide-react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { 
+  signInWithEmailAndPassword, 
+  sendPasswordResetEmail,
+  confirmPasswordReset,
+  verifyPasswordResetCode 
+} from "firebase/auth";
 import { auth } from "../../Backend/firebaseConfig";
 import { useNavigate } from "react-router-dom";
-import axios from "axios"; // For making API calls to your backend
 
 // Import assets
 import loginBg from "../assets/loginbg.png";
@@ -34,7 +38,7 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-  try {
+    try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -47,6 +51,8 @@ export default function Login() {
     } catch (err) {
       console.error("Login failed:", err.message);
       setError("Wrong email or password.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,54 +61,47 @@ export default function Login() {
     setError("⛔ Account creation is disabled. Only admin can log in.");
   };
 
-  // Forgot password handlers
+  // Forgot password handlers using Firebase
   const handleSendResetEmail = async () => {
     setForgotPasswordError("");
     setForgotPasswordSuccess("");
+    
     if (!forgotEmail) {
       setForgotPasswordError("Please enter your email address.");
       return;
     }
 
     try {
-      // Call your backend API to generate and send a 6-digit code
-      const response = await axios.post("/api/send-reset-code", { email: forgotEmail });
-      if (response.data.success) {
-        setForgotPasswordSuccess("A 6-digit code has been sent to your email.");
-        setForgotPasswordStep(2);
-      } else {
-        setForgotPasswordError("Failed to send reset code. Please check your email.");
-      }
+      await sendPasswordResetEmail(auth, forgotEmail);
+      setForgotPasswordSuccess("Password reset email sent! Check your inbox.");
+      setForgotPasswordStep(2);
     } catch (err) {
-      console.error("Forgot password failed:", err.message);
-      setForgotPasswordError("Failed to send reset code. Please try again.");
+      console.error("Password reset error:", err);
+      setForgotPasswordError("Failed to send reset email. Please check your email address.");
     }
   };
 
   const handleVerifyCodeAndReset = async () => {
     setForgotPasswordError("");
     setForgotPasswordSuccess("");
+    
     if (!resetCode || !newPassword) {
-      setForgotPasswordError("Please enter a valid code and new password.");
+      setForgotPasswordError("Please enter the code from your email and a new password.");
       return;
     }
 
     try {
-      // Call your backend API to verify the code and reset the password
-      const response = await axios.post("/api/verify-reset-code", {
-        email: forgotEmail,
-        code: resetCode,
-        newPassword,
-      });
-      if (response.data.success) {
-        setForgotPasswordSuccess("Your password has been reset successfully!");
-        setForgotPasswordStep(3);
-      } else {
-        setForgotPasswordError("Invalid code. Please try again.");
-      }
+      // Verify the reset code first
+      await verifyPasswordResetCode(auth, resetCode);
+      
+      // If verification succeeds, confirm the password reset
+      await confirmPasswordReset(auth, resetCode, newPassword);
+      
+      setForgotPasswordSuccess("Your password has been reset successfully!");
+      setForgotPasswordStep(3);
     } catch (err) {
-      console.error("Password reset failed:", err.message);
-      setForgotPasswordError("Invalid code or new password. Please try again.");
+      console.error("Password reset error:", err);
+      setForgotPasswordError("Invalid code or password. Please try again.");
     }
   };
 
@@ -112,7 +111,7 @@ export default function Login() {
         return (
           <>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Forgot Password?</h2>
-            <p className="text-gray-600 mb-6">Enter your email to receive a 6-digit reset code.</p>
+            <p className="text-gray-600 mb-6">Enter your email to receive a password reset link.</p>
             <input
               type="email"
               value={forgotEmail}
@@ -124,7 +123,7 @@ export default function Login() {
               onClick={handleSendResetEmail}
               className="w-full bg-[#A68B69] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#8C7355] transition-colors"
             >
-              Send Reset Code
+              Send Reset Email
             </button>
             {forgotPasswordError && <p className="text-red-500 text-sm mt-4 text-center">{forgotPasswordError}</p>}
             {forgotPasswordSuccess && <p className="text-green-500 text-sm mt-4 text-center">{forgotPasswordSuccess}</p>}
@@ -134,13 +133,15 @@ export default function Login() {
         return (
           <>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h2>
-            <p className="text-gray-600 mb-6">Enter the 6-digit code sent to your email and your new password.</p>
+            <p className="text-gray-600 mb-6">
+              Check your email for a reset link. The link contains a code that you can enter below along with your new password.
+            </p>
             <input
               type="text"
               value={resetCode}
               onChange={(e) => setResetCode(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all mb-4"
-              placeholder="Enter 6-digit code"
+              placeholder="Enter code from email"
             />
             <input
               type="password"
@@ -168,7 +169,10 @@ export default function Login() {
             <button
               onClick={() => {
                 setShowForgotPasswordModal(false);
-                setForgotPasswordStep(1); // Reset for next time
+                setForgotPasswordStep(1);
+                setForgotEmail("");
+                setResetCode("");
+                setNewPassword("");
               }}
               className="w-full bg-gray-500 text-white py-3 rounded-lg font-bold text-lg hover:bg-gray-600 transition-colors"
             >
@@ -289,12 +293,17 @@ export default function Login() {
 
       {/* Forgot Password Modal */}
       {showForgotPasswordModal && (
-        <div className="fixed inset-0 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out">
+        <div className="fixed inset-0 bg-black/5 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out">
           <div className="bg-white rounded-lg p-8 w-full max-w-lg relative transform transition-all duration-300 ease-in-out scale-100">
             <button
               onClick={() => {
                 setShowForgotPasswordModal(false);
-                setForgotPasswordStep(1); // Reset modal state when closed
+                setForgotPasswordStep(1);
+                setForgotEmail("");
+                setResetCode("");
+                setNewPassword("");
+                setForgotPasswordError("");
+                setForgotPasswordSuccess("");
               }}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
             >

@@ -14,6 +14,7 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
@@ -76,6 +77,29 @@ export default function CartScreen() {
     };
   }, []);
 
+  // Add this useEffect to handle checkout completion
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Refresh cart data when returning from checkout
+      if (currentUserRef.current) {
+        const itemsRef = collection(db, "carts", currentUserRef.current.uid, "items");
+        onSnapshot(itemsRef, (snap) => {
+          const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setCartItems(data);
+          
+          // Reset selection map
+          const next = {};
+          data.forEach((it) => {
+            next[it.id] = false;
+          });
+          setSelectedMap(next);
+        });
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   if (!leagueSpartanLoaded || !montserratLoaded) return null;
 
   const toggleSelect = (id) => {
@@ -121,6 +145,37 @@ export default function CartScreen() {
     }
   };
 
+  // Function to remove selected items from cart
+  const removeSelectedItems = async () => {
+    const user = currentUserRef.current;
+    if (!user) return;
+    
+    try {
+      const batch = writeBatch(db);
+      const selectedIds = Object.keys(selectedMap).filter(id => selectedMap[id]);
+      
+      selectedIds.forEach(id => {
+        const itemRef = doc(db, "carts", user.uid, "items", id);
+        batch.delete(itemRef);
+      });
+      
+      await batch.commit();
+      
+      // Clear the selected items from the selectedMap
+      setSelectedMap((prev) => {
+        const next = { ...prev };
+        selectedIds.forEach(id => delete next[id]);
+        return next;
+      });
+      
+      return true;
+    } catch (err) {
+      console.error("removeSelectedItems error:", err);
+      Alert.alert("Error", "Could not remove items from cart");
+      return false;
+    }
+  };
+
   const selectedItems = cartItems.filter(it => selectedMap[it.id]);
   const totalAmount = selectedItems.reduce((s, it) => s + (Number(it.price || 0) * Number(it.quantity || 0)), 0);
 
@@ -135,10 +190,15 @@ export default function CartScreen() {
       return;
     }
 
-    // FIXED: Pass the selected items and total amount directly to CheckoutScreen
+    // Store the selected item IDs before navigating
+    const selectedIds = Object.keys(selectedMap).filter(id => selectedMap[id]);
+    
+    // Navigate and pass the selected IDs to be removed on success
     navigation.navigate("CheckoutScreen", { 
       selectedItems: selectedItems,
-      totalAmount: totalAmount 
+      totalAmount: totalAmount,
+      selectedItemIds: selectedIds, // Pass the IDs to be removed
+      userId: user.uid // Also pass user ID for reference
     });
   };
 
@@ -233,7 +293,7 @@ export default function CartScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#A68B69" />
-      </View>
+    </View>
     );
   }
 
@@ -285,7 +345,7 @@ export default function CartScreen() {
   );
 }
 
-// Add the missing styles
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,

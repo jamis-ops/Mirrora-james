@@ -58,6 +58,17 @@ export default function CompleteProfileScreen() {
         fetchUserData();
     }, []);
 
+    // --- Handle Phone Number Input ---
+    const handlePhoneNumberChange = (text) => {
+        // Remove any non-digit characters
+        const cleanedText = text.replace(/[^0-9]/g, '');
+        
+        // Limit to 11 digits
+        if (cleanedText.length <= 11) {
+            setPhoneNumber(cleanedText);
+        }
+    };
+
     // --- Save Profile Data ---
     const handleSaveProfile = async () => {
         const currentUser = auth.currentUser;
@@ -65,6 +76,12 @@ export default function CompleteProfileScreen() {
 
         if (!name.trim()) {
             Alert.alert("Validation Error", "Please enter your full name.");
+            return;
+        }
+
+        // Validate phone number
+        if (phoneNumber && phoneNumber.length !== 11) {
+            Alert.alert("Validation Error", "Phone number must be exactly 11 digits.");
             return;
         }
 
@@ -171,11 +188,12 @@ export default function CompleteProfileScreen() {
                         </View>
                         <TextInput
                             style={styles.phoneInput}
-                            placeholder="Enter Phone Number"
+                            placeholder="Enter 11-digit Phone Number"
                             placeholderTextColor="#999"
                             keyboardType="phone-pad"
                             value={phoneNumber}
-                            onChangeText={setPhoneNumber}
+                            onChangeText={handlePhoneNumberChange}
+                            maxLength={11} // This ensures the keyboard won't accept more than 11 characters
                         />
                     </View>
 

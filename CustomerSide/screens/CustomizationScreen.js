@@ -34,7 +34,7 @@ import {
 export default function CustomizationScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const { product } = route.params;
+  const { product } = route.params || {};
 
   const [formData, setFormData] = useState({
     dimensions: {
@@ -185,42 +185,46 @@ export default function CustomizationScreen() {
       // App ID constant (same as in ChatScreen)
       const appId = 'mirrora-app';
       
-      // Get user name (you might want to fetch this from user profile)
+      // Get user name
       const userName = user.displayName || user.email?.split('@')[0] || 'Customer';
+      
+      // TODO: Implement your seller assignment logic here
+      // For now, using a placeholder or making it optional
+      const sellerId = 'default_seller_id'; // Replace with actual logic
       
       // Format customization data for the chat message
       const customizationSummary = formatCustomizationSummary(formData, product);
       
-      // Create seller chat thread reference (using a seller ID - you'll need to implement seller assignment logic)
+      // Create seller chat thread reference
       const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
-const messagesRef = collection(chatThreadRef, 'messages');
+      const messagesRef = collection(chatThreadRef, 'messages');
 
       // Update seller chat thread
       await setDoc(chatThreadRef, {
-      lastMessage: `New customization request from ${userName}`,
-      timestamp: serverTimestamp(),
-      userName: userName,
-      userAvatar: userName.substring(0, 2).toUpperCase(),
-      isRead: false,
-      hasCustomizationRequest: true,
-    }, { merge: true });
+        lastMessage: `New customization request from ${userName}`,
+        timestamp: serverTimestamp(),
+        userName: userName,
+        userAvatar: userName.substring(0, 2).toUpperCase(),
+        isRead: false,
+        hasCustomizationRequest: true,
+      }, { merge: true });
 
       // Send customization message to seller
-     await addDoc(messagesRef, {
-  text: customizationSummary,
-  timestamp: serverTimestamp(),
-  senderId: user.uid,
-  senderName: userName,
-  senderAvatar: userName.substring(0, 2).toUpperCase(),
-  messageType: 'customization_request',
-  customizationData: {
-    ...formData,
-    productInfo: product,
-    requestId: `custom_${Date.now()}`,
-    status: 'pending',
-    createdAt: new Date().toISOString(),
-  },
-});
+      await addDoc(messagesRef, {
+        text: customizationSummary,
+        timestamp: serverTimestamp(),
+        senderId: user.uid,
+        senderName: userName,
+        senderAvatar: userName.substring(0, 2).toUpperCase(),
+        messageType: 'customization_request',
+        customizationData: {
+          ...formData,
+          productInfo: product,
+          requestId: `custom_${Date.now()}`,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        },
+      });
 
       // Also save to a separate customization requests collection for easier management
       const customizationRequestsRef = collection(db, `artifacts/${appId}/public/data/customization_requests`);
@@ -229,10 +233,10 @@ const messagesRef = collection(chatThreadRef, 'messages');
         customerName: userName,
         sellerId: sellerId,
         productInfo: {
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          imageUrl: product.imageUrl,
+          id: product?.id || '',
+          name: product?.name || 'Unknown Product',
+          price: product?.price || 0,
+          imageUrl: product?.imageUrl || '',
         },
         customizationData: formData,
         status: 'pending',
@@ -266,8 +270,8 @@ const messagesRef = collection(chatThreadRef, 'messages');
     
     return `🛠️ NEW CUSTOMIZATION REQUEST
 
-📦 Product: ${productInfo.name}
-💰 Original Price: ₱${productInfo.price}
+📦 Product: ${productInfo?.name || 'Unknown Product'}
+💰 Original Price: ₱${productInfo?.price || 0}
 
 📏 DIMENSIONS:
 • Height: ${dimensions.height}
@@ -363,14 +367,14 @@ Please review this customization request and provide a quote with timeline.`;
         >
           <Icon name="chevron-left" size={30} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Customize {product.name}</Text>
+        <Text style={styles.headerTitle}>Customize {product?.name || 'Product'}</Text>
       </View>
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Product Info */}
         <View style={styles.productInfo}>
-          <Text style={styles.productName}>{product.name}</Text>
-          <Text style={styles.productPrice}>Base Price: ₱{product.price}</Text>
+          <Text style={styles.productName}>{product?.name || 'Product'}</Text>
+          <Text style={styles.productPrice}>Base Price: ₱{product?.price || 0}</Text>
         </View>
 
         {/* Dimensions */}

@@ -13,82 +13,48 @@ import {
     Dimensions,
     Platform,
     StatusBar,
-    TextInput
+    TextInput,
+    ActivityIndicator
 } from 'react-native';
 import { useNavigation, useRoute } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db, auth } from '../Backend/firebaseConfig';
-import { collection, addDoc, Timestamp, writeBatch, doc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, writeBatch, doc, getDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
 import { FontAwesome5 } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
+// Define shipping fee structure based on regions
+const SHIPPING_FEES = {
+  metroManila: 100,
+  luzon: 150,
+  visayas: 200,
+  mindanao: 250,
+  international: 500
+};
+
 export default function CheckoutScreen() {
     const navigation = useNavigation();
     const route = useRoute();
-    const { selectedItems, totalAmount } = route.params;
+    const { selectedItems, totalAmount, selectedItemIds, userId } = route.params || {};
 
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('bankTransfer');
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('Bank Transfer');
     const [cartItems, setCartItems] = useState([]);
     const [subtotal, setSubtotal] = useState(0);
     const [showAddressModal, setShowAddressModal] = useState(false);
     const [showBankModal, setShowBankModal] = useState(false);
-    const [selectedAddress, setSelectedAddress] = useState({
-        id: 1,
-        label: 'Home Address',
-        address: '123 Tonying Street, San Pedro, Laguna, PH',
-        icon: 'home-outline'
-    });
+    const [addresses, setAddresses] = useState([]);
+    const [selectedAddress, setSelectedAddress] = useState(null);
     const [selectedBank, setSelectedBank] = useState(null);
     const [referenceNumber, setReferenceNumber] = useState('');
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+    const [loadingAddresses, setLoadingAddresses] = useState(true);
+    const [userName, setUserName] = useState('');
+    const [userEmail, setUserEmail] = useState('');
+    const [deliveryFee, setDeliveryFee] = useState(0);
 
-    useEffect(() => {
-    const fetchCart = async () => {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        try {
-            const snapshot = await getDocs(collection(db, "carts", user.uid, "items"));
-            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-            setCartItems(items);
-            setSubtotal(
-                items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0)
-            );
-        } catch (error) {
-            console.error("Error fetching cart: ", error);
-        }
-    };
-
-    // Case 1: When navigating with selectedItems + totalAmount (from params)
-    if (selectedItems && totalAmount) {
-        setCartItems(selectedItems);
-        setSubtotal(totalAmount);
-    } else {
-        // Case 2: Fallback to fetching directly from Firestore
-        fetchCart();
-    }
-
-    // Animations
-    Animated.parallel([
-        Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 600,
-            useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 600,
-            useNativeDriver: true,
-        }),
-    ]).start();
-
-    // Generate initial reference number
-    generateReferenceNumber();
-}, [selectedItems, totalAmount]);
     // Animation refs
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(50)).current;
@@ -96,13 +62,6 @@ export default function CheckoutScreen() {
 
     const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
-
-    // Sample addresses
-    const addresses = [
-        { id: 1, label: 'Home Address', address: '123 Tonying Street, San Pedro, Laguna, PH', icon: 'home-outline' },
-        { id: 2, label: 'Work Address', address: '456 Business Ave, Makati, Metro Manila, PH', icon: 'office-building-outline' },
-        { id: 3, label: 'Other Address', address: '789 Alternative St, Quezon City, Metro Manila, PH', icon: 'map-marker-outline' }
-    ];
 
     // Bank options
     const bankOptions = [
@@ -112,10 +71,98 @@ export default function CheckoutScreen() {
         { id: 4, name: 'GCash', fullName: 'GCash Mobile Wallet', accountNumber: '09171234567', color: '#007DFE' }
     ];
 
+    // Function to determine shipping fee based on region
+    const calculateShippingFee = (address) => {
+      if (!address) return 0;
+      
+      // If order has more than 1 item, shipping is free
+      const totalItems = cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+      if (totalItems > 1) return 0;
+      
+      // Determine shipping fee based on region
+      const region = address.region?.toLowerCase() || '';
+      
+      if (region.includes('metro manila') || region.includes('ncr')) {
+        return SHIPPING_FEES.metroManila;
+      } else if (region.includes('luzon')) {
+        return SHIPPING_FEES.luzon;
+      } else if (region.includes('visayas')) {
+        return SHIPPING_FEES.visayas;
+      } else if (region.includes('mindanao')) {
+        return SHIPPING_FEES.mindanao;
+      } else if (region.includes('international') || address.country?.toLowerCase() !== 'philippines') {
+        return SHIPPING_FEES.international;
+      }
+      
+      // Default fee for Philippines
+      return SHIPPING_FEES.luzon;
+    };
+
+    // Fetch user addresses, name, and email
+    useEffect(() => {
+        const fetchUserData = async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            try {
+                // Set the user's email from Firebase auth
+                setUserEmail(user.email || '');
+
+                // Fetch user name from user document
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
+                if (userDocSnap.exists()) {
+                    const userData = userDocSnap.data();
+                    setUserName(userData.name || 'Customer');
+                }
+
+                // Fetch addresses from user's addresses subcollection
+                const addressesRef = collection(db, 'users', user.uid, 'addresses');
+                const unsubscribe = onSnapshot(addressesRef, 
+                    (snapshot) => {
+                        const addressesData = [];
+                        snapshot.forEach((doc) => {
+                            addressesData.push({ id: doc.id, ...doc.data() });
+                        });
+                        setAddresses(addressesData);
+                        
+                        // Set the default address if available
+                        const defaultAddress = addressesData.find(addr => addr.isDefault);
+                        if (defaultAddress) {
+                            setSelectedAddress(defaultAddress);
+                            setDeliveryFee(calculateShippingFee(defaultAddress));
+                        } else if (addressesData.length > 0) {
+                            setSelectedAddress(addressesData[0]);
+                            setDeliveryFee(calculateShippingFee(addressesData[0]));
+                        }
+                        
+                        setLoadingAddresses(false);
+                    },
+                    (error) => {
+                        console.error("Error fetching addresses:", error);
+                        setLoadingAddresses(false);
+                    }
+                );
+
+                return () => unsubscribe();
+            } catch (error) {
+                console.error("Error fetching user data:", error);
+                setLoadingAddresses(false);
+            }
+        };
+
+        fetchUserData();
+    }, []);
+
     useEffect(() => {
         if (selectedItems && totalAmount) {
             setCartItems(selectedItems);
             setSubtotal(totalAmount);
+            
+            // Recalculate shipping fee when items change
+            if (selectedAddress) {
+                setDeliveryFee(calculateShippingFee(selectedAddress));
+            }
         }
         
         // Simple entrance animations
@@ -142,9 +189,14 @@ export default function CheckoutScreen() {
         setReferenceNumber(`REF${timestamp.slice(-6)}${random}`);
     };
 
-    if (!leagueSpartanLoaded || !montserratLoaded) return null;
+    if (!leagueSpartanLoaded || !montserratLoaded) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#A68B69" />
+            </View>
+        );
+    }
 
-    const deliveryFee = 0;
     const total = subtotal + deliveryFee;
     const downPayment = total * 0.50;
 
@@ -168,16 +220,16 @@ export default function CheckoutScreen() {
             Alert.alert("Payment Method Required", "Please select a bank account for payment.");
             return;
         }
-        if (!selectedBank) {
-            Alert.alert("Payment Method Required", "Please select a bank account for payment.");
-            return;
-        }
 
         if (!referenceNumber.trim()) {
             Alert.alert("Reference Number Required", "Please enter the reference number from your payment.");
             return;
         }
 
+        if (!selectedAddress) {
+            Alert.alert("Address Required", "Please select a delivery address.");
+            return;
+        }
 
         animateButton();
         setIsPlacingOrder(true);
@@ -194,6 +246,8 @@ export default function CheckoutScreen() {
 
             const orderData = {
                 userID: userId,
+                userName: userName,
+                userEmail: userEmail,
                 items: cartItems.map(item => ({
                     id: item.id || '',
                     name: item.name || 'Unnamed Item',
@@ -202,15 +256,20 @@ export default function CheckoutScreen() {
                     quantity: Number(item.quantity) || 0,
                     imageUrl: item.imageUrl || null
                 })),
+                subtotal: subtotal,
+                deliveryFee: deliveryFee,
                 total: total,
                 downPayment: downPayment,
                 remainingPayment: total - downPayment,
-                status: 'Pending',
+                status: 'pending',
+                payment: 'pending',
                 createdAt: Timestamp.fromDate(new Date()),
                 paymentMethod: selectedPaymentMethod,
                 bankDetails: selectedBank,
                 referenceNumber: referenceNumber,
                 deliveryAddress: selectedAddress,
+                customerName: selectedAddress.fullName,
+                customerPhone: selectedAddress.phoneNumber,
             };
             
             if (orderData.items.some(item => item.price === 0 || item.quantity === 0)) {
@@ -219,12 +278,15 @@ export default function CheckoutScreen() {
 
             const docRef = await addDoc(collection(db, 'orders'), orderData);
 
-            const batch = writeBatch(db);
-            cartItems.forEach(item => {
-                const itemRef = doc(db, "users", userId, "cart", item.id);
-                batch.delete(itemRef);
-            });
-            await batch.commit();
+            // FIXED: Remove items from cart using the passed selectedItemIds and userId
+            if (selectedItemIds && selectedItemIds.length > 0) {
+                const batch = writeBatch(db);
+                selectedItemIds.forEach(itemId => {
+                    const itemRef = doc(db, "carts", userId, "items", itemId);
+                    batch.delete(itemRef);
+                });
+                await batch.commit();
+            }
 
             Alert.alert(
                 "Order Placed Successfully! 🎉",
@@ -232,7 +294,10 @@ export default function CheckoutScreen() {
                 [
                     {
                         text: "View Order",
-                        onPress: () => navigation.navigate('OrderConfirmationScreen', { orderId: docRef.id })
+                        onPress: () => navigation.navigate('OrderConfirmationScreen', { 
+                            orderId: docRef.id,
+                            orderData: orderData
+                        })
                     }
                 ]
             );
@@ -260,28 +325,59 @@ export default function CheckoutScreen() {
                         </TouchableOpacity>
                     </View>
                     
-                    {addresses.map((address) => (
-                        <TouchableOpacity
-                            key={address.id}
-                            style={[
-                                styles.addressOption,
-                                selectedAddress.id === address.id && styles.selectedAddressOption
-                            ]}
-                            onPress={() => {
-                                setSelectedAddress(address);
-                                setShowAddressModal(false);
-                            }}
-                        >
-                            <Icon name={address.icon} size={24} color="#A68B69" />
-                            <View style={styles.addressDetails}>
-                                <Text style={styles.addressLabel}>{address.label}</Text>
-                                <Text style={styles.addressText}>{address.address}</Text>
-                            </View>
-                            {selectedAddress.id === address.id && (
-                                <Icon name="check-circle" size={24} color="#A68B69" />
-                            )}
-                        </TouchableOpacity>
-                    ))}
+                    {loadingAddresses ? (
+                        <ActivityIndicator size="large" color="#A68B69" style={styles.loadingIndicator} />
+                    ) : addresses.length === 0 ? (
+                        <View style={styles.emptyAddressContainer}>
+                            <Icon name="map-marker-off" size={40} color="#D3D3D3" />
+                            <Text style={styles.emptyAddressText}>No addresses found</Text>
+                            <Text style={styles.emptyAddressSubtext}>
+                                Please add an address in your profile first
+                            </Text>
+                            <TouchableOpacity 
+                                style={styles.addAddressButton}
+                                onPress={() => {
+                                    setShowAddressModal(false);
+                                    navigation.navigate('MyAddressScreen');
+                                }}
+                            >
+                                <Text style={styles.addAddressButtonText}>Add Address</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        addresses.map((address) => (
+                            <TouchableOpacity
+                                key={address.id}
+                                style={[
+                                    styles.addressOption,
+                                    selectedAddress?.id === address.id && styles.selectedAddressOption
+                                ]}
+                                onPress={() => {
+                                    setSelectedAddress(address);
+                                    setDeliveryFee(calculateShippingFee(address));
+                                    setShowAddressModal(false);
+                                }}
+                            >
+                                <Icon name={address.isDefault ? "home" : "map-marker"} size={24} color="#A68B69" />
+                                <View style={styles.addressDetails}>
+                                    <Text style={styles.addressLabel}>
+                                        {address.fullName} {address.isDefault && "(Default)"}
+                                    </Text>
+                                    <Text style={styles.addressText}>{address.completeAddress}</Text>
+                                    <Text style={styles.addressSubtext}>
+                                        {address.region} • {address.postalCode}
+                                    </Text>
+                                    <Text style={styles.addressSubtext}>Phone: {address.phoneNumber}</Text>
+                                    <Text style={styles.shippingFeeText}>
+                                        Shipping Fee: ₱{calculateShippingFee(address).toLocaleString()}
+                                    </Text>
+                                </View>
+                                {selectedAddress?.id === address.id && (
+                                    <Icon name="check-circle" size={24} color="#A68B69" />
+                                )}
+                            </TouchableOpacity>
+                        ))
+                    )}
                 </View>
             </View>
         </Modal>
@@ -332,6 +428,9 @@ export default function CheckoutScreen() {
         </Modal>
     );
 
+    // Calculate total items in cart
+    const totalItems = cartItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
     return (
         <View style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -370,22 +469,49 @@ export default function CheckoutScreen() {
                         </TouchableOpacity>
                     </View>
                     
-                    <View style={styles.deliveryInfo}>
-                        <View style={styles.infoRow}>
-                            <Icon name={selectedAddress.icon} size={20} color="#A68B69" />
-                            <View style={styles.infoDetails}>
-                                <Text style={styles.infoLabel}>{selectedAddress.label}</Text>
-                                <Text style={styles.infoValue}>{selectedAddress.address}</Text>
+                    {selectedAddress ? (
+                        <View style={styles.deliveryInfo}>
+                            <View style={styles.infoRow}>
+                                <Icon name="account" size={20} color="#A68B69" />
+                                <View style={styles.infoDetails}>
+                                    <Text style={styles.infoLabel}>Customer Name</Text>
+                                    <Text style={styles.infoValue}>{selectedAddress.fullName}</Text>
+                                </View>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Icon name="email" size={20} color="#A68B69" />
+                                <View style={styles.infoDetails}>
+                                    <Text style={styles.infoLabel}>Email Address</Text>
+                                    <Text style={styles.infoValue}>{userEmail}</Text>
+                                </View>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Icon name="phone" size={20} color="#A68B69" />
+                                <View style={styles.infoDetails}>
+                                    <Text style={styles.infoLabel}>Phone Number</Text>
+                                    <Text style={styles.infoValue}>{selectedAddress.phoneNumber}</Text>
+                                </View>
+                            </View>
+                            <View style={styles.infoRow}>
+                                <Icon name="map-marker" size={20} color="#A68B69" />
+                                <View style={styles.infoDetails}>
+                                    <Text style={styles.infoLabel}>Delivery Address</Text>
+                                    <Text style={styles.infoValue}>{selectedAddress.completeAddress}</Text>
+                                    <Text style={styles.infoSubtext}>
+                                        {selectedAddress.region} • {selectedAddress.postalCode}
+                                    </Text>
+                                </View>
                             </View>
                         </View>
-                        <View style={styles.infoRow}>
-                            <Icon name="clock-outline" size={20} color="#A68B69" />
-                            <View style={styles.infoDetails}>
-                                <Text style={styles.infoLabel}>Estimated Delivery</Text>
-                                <Text style={styles.infoValue}>10:00 - 10:30 (Today)</Text>
-                            </View>
-                        </View>
-                    </View>
+                    ) : (
+                        <TouchableOpacity 
+                            style={styles.addAddressPrompt}
+                            onPress={() => setShowAddressModal(true)}
+                        >
+                            <Icon name="plus-circle" size={24} color="#A68B69" />
+                            <Text style={styles.addAddressPromptText}>Select Delivery Address</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Order Items Card */}
@@ -393,7 +519,7 @@ export default function CheckoutScreen() {
                     <View style={styles.cardHeader}>
                         <View style={styles.cardTitleContainer}>
                             <Icon name="shopping" size={24} color="#A68B69" />
-                            <Text style={styles.cardTitle}>Order Items ({cartItems.length})</Text>
+                            <Text style={styles.cardTitle}>Order Items ({totalItems})</Text>
                         </View>
                     </View>
                     
@@ -464,16 +590,15 @@ export default function CheckoutScreen() {
 
                     {/* Reference Number */}
                     <View style={styles.referenceContainer}>
-                    <Text style={styles.referenceLabel}>Reference Number</Text>
-                    <TextInput
-                        style={styles.referenceInput}
-                        placeholder="Enter reference number after payment"
-                        placeholderTextColor="#999"
-                        value={referenceNumber}
-                        onChangeText={setReferenceNumber}
-                    />
-                </View>
-
+                        <Text style={styles.referenceLabel}>Reference Number</Text>
+                        <TextInput
+                            style={styles.referenceInput}
+                            placeholder="Enter reference number after payment"
+                            placeholderTextColor="#999"
+                            value={referenceNumber}
+                            onChangeText={setReferenceNumber}
+                        />
+                    </View>
 
                     <View style={styles.divider} />
 
@@ -485,8 +610,18 @@ export default function CheckoutScreen() {
                         </View>
                         <View style={styles.summaryRow}>
                             <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                            <Text style={[styles.summaryValue, styles.freeText]}>Free</Text>
+                            <Text style={[
+                                styles.summaryValue, 
+                                deliveryFee === 0 ? styles.freeText : {}
+                            ]}>
+                                {deliveryFee === 0 ? 'Free' : `₱ ${deliveryFee.toLocaleString()}`}
+                            </Text>
                         </View>
+                        {deliveryFee === 0 && totalItems > 1 && (
+                            <Text style={styles.freeShippingNote}>
+                                🎉 Free shipping on orders with more than 1 item!
+                            </Text>
+                        )}
                         <View style={styles.divider} />
                         <View style={styles.summaryRow}>
                             <Text style={styles.summaryHighlight}>Down Payment (50%)</Text>
@@ -517,10 +652,10 @@ export default function CheckoutScreen() {
                         <TouchableOpacity 
                             style={[
                                 styles.placeOrderButton,
-                                (!selectedBank || isPlacingOrder) && styles.disabledButton
+                                (!selectedBank || !selectedAddress || isPlacingOrder) && styles.disabledButton
                             ]}
                             onPress={handlePlaceOrder}
-                            disabled={!selectedBank || isPlacingOrder}
+                            disabled={!selectedBank || !selectedAddress || isPlacingOrder}
                         >
                             <Text style={styles.placeOrderButtonText}>
                                 {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
@@ -540,6 +675,11 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f8f9fa',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     header: {
         flexDirection: 'row',
@@ -634,6 +774,12 @@ const styles = StyleSheet.create({
         color: '#666',
         lineHeight: 20,
     },
+    infoSubtext: {
+        fontFamily: 'Montserrat_400Regular',
+        fontSize: 12,
+        color: '#888',
+        marginTop: 2,
+    },
     checkoutItemContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -723,6 +869,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 12,
     },
+    smallBankIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    smallBankIconText: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 10,
+        color: '#fff',
+    },
     selectedBankName: {
         fontFamily: 'Montserrat_600SemiBold',
         fontSize: 15,
@@ -742,19 +900,14 @@ const styles = StyleSheet.create({
         color: '#666',
         marginBottom: 8,
     },
-    referenceNumberContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: 'rgba(166, 139, 105, 0.1)',
-        padding: 12,
+    referenceInput: {
+        borderWidth: 1,
+        borderColor: '#ccc',
         borderRadius: 8,
-    },
-    referenceNumber: {
-        fontFamily: 'Montserrat_600SemiBold',
+        padding: 10,
         fontSize: 16,
-        color: '#A68B69',
-        letterSpacing: 1,
+        marginTop: 8,
+        color: '#333',
     },
     divider: {
         height: 1,
@@ -896,6 +1049,56 @@ const styles = StyleSheet.create({
         fontSize: 20,
         color: '#333',
     },
+    loadingIndicator: {
+        marginVertical: 20,
+    },
+    emptyAddressContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+    },
+    emptyAddressText: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 18,
+        color: '#333',
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptyAddressSubtext: {
+        fontFamily: 'Montserrat_400Regular',
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    addAddressButton: {
+        backgroundColor: '#A68B69',
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 8,
+    },
+    addAddressButtonText: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 16,
+        color: '#fff',
+    },
+    addAddressPrompt: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+        backgroundColor: 'rgba(166, 139, 105, 0.1)',
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: 'rgba(166, 139, 105, 0.3)',
+        borderStyle: 'dashed',
+    },
+    addAddressPromptText: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 16,
+        color: '#A68B69',
+        marginLeft: 12,
+    },
     addressOption: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -926,6 +1129,12 @@ const styles = StyleSheet.create({
         color: '#666',
         lineHeight: 20,
     },
+    addressSubtext: {
+        fontFamily: 'Montserrat_400Regular',
+        fontSize: 12,
+        color: '#888',
+        marginTop: 2,
+    },
     bankOption: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -953,18 +1162,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#fff',
     },
-    smallBankIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    smallBankIconText: {
-        fontFamily: 'Montserrat_600SemiBold',
-        fontSize: 10,
-        color: '#fff',
-    },
     bankDetails: {
         flex: 1,
     },
@@ -979,95 +1176,20 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#666',
     },
-    modalScrollView: {
-        maxHeight: height * 0.5,
-    },
-    addressOptionContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    addressActions: {
-        flexDirection: 'row',
-        marginLeft: 8,
-        gap: 8,
-    },
-    addressActionButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(166, 139, 105, 0.1)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    deleteButton: {
-        backgroundColor: 'rgba(244, 67, 54, 0.1)',
-    },
-    addAddressButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 16,
-        backgroundColor: 'rgba(166, 139, 105, 0.1)',
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: 'rgba(166, 139, 105, 0.3)',
-        borderStyle: 'dashed',
-        marginTop: 16,
-        gap: 12,
-    },
-    addAddressText: {
+    shippingFeeText: {
         fontFamily: 'Montserrat_600SemiBold',
-        fontSize: 16,
+        fontSize: 14,
         color: '#A68B69',
+        marginTop: 4,
     },
-    formContainer: {
-        maxHeight: height * 0.4,
-    },
-    inputGroup: {
-        marginBottom: 20,
-    },
-    inputLabel: {
-        fontFamily: 'Montserrat_600SemiBold',
-        fontSize: 16,
-        color: '#333',
-        marginBottom: 8,
-    },
-    textInput: {
+    freeShippingNote: {
         fontFamily: 'Montserrat_400Regular',
-        fontSize: 16,
-        color: '#333',
-        borderWidth: 1,
-        borderColor: 'rgba(166, 139, 105, 0.3)',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        backgroundColor: '#fff',
+        fontSize: 14,
+        color: '#4CAF50',
+        textAlign: 'center',
+        marginTop: 8,
+        padding: 8,
+        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+        borderRadius: 8,
     },
-    multilineInput: {
-        height: 80,
-        textAlignVertical: 'top',
-    },
-    saveAddressButton: {
-        backgroundColor: '#A68B69',
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: 'center',
-        marginTop: 20,
-    },
-    saveAddressText: {
-        fontFamily: 'Montserrat_600SemiBold',
-        fontSize: 16,
-        color: '#fff',
-    },
-    referenceInput: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 16,
-    marginTop: 8,
-    color: '#333',
-},
-
 });

@@ -1,47 +1,77 @@
-// src/pages/Reviews.jsx
-import React, { useState, useEffect } from 'react';
-import { Star, Eye, EyeOff, Trash2, CheckCircle, XCircle, RefreshCw, Search, Filter, X, Calendar, Package, User, MessageSquare, TrendingUp, Award, Clock } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import {
+  Star,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Search,
+  Filter,
+  X,
+  Calendar,
+  Package,
+  MessageSquare,
+  TrendingUp,
+  Award,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  BarChart3,
+} from "lucide-react";
 import { db } from "../../Backend/firebaseConfig.js";
-import { collection, onSnapshot, updateDoc, deleteDoc, doc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  onSnapshot,
+  updateDoc,
+  doc,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
 
-const REVIEWS_PER_PAGE = 10; // Define how many reviews to show per page
+const REVIEWS_PER_PAGE = 10;
 
 function Reviews() {
   const [reviews, setReviews] = useState([]);
   const [filteredReviews, setFilteredReviews] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedRating, setSelectedRating] = useState(0);
-  const [selectedProduct, setSelectedProduct] = useState('all');
-  const [sortBy, setSortBy] = useState('date');
-
-  // Pagination state
+  const [selectedProduct, setSelectedProduct] = useState("all");
+  const [sortBy, setSortBy] = useState("date");
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    const q = query(collection(db, 'reviews'), orderBy('date', 'desc'));
+    const q = query(collection(db, "reviews"), orderBy("date", "desc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
         const reviewList = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
           reviewList.push({
-            id: doc.id,
-            userName: data.userName || 'Anonymous',
+            id: docSnap.id,
+            userName: data.userName || "Anonymous",
             rating: data.rating || 0,
-            comment: data.comment || '',
-            date: data.date?.toDate() || new Date(),
+            comment: data.comment || "",
+            date:
+              data.date && typeof data.date.toDate === "function"
+                ? data.date.toDate()
+                : new Date(),
             isVisible: data.isVisible !== false,
-            avatar: data.avatar || 'US',
+            avatar: data.avatar || "US",
             orderId: data.orderId || null,
             productInfo: data.productInfo || null,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            status: data.status || 'approved'
+            createdAt:
+              data.createdAt && typeof data.createdAt.toDate === "function"
+                ? data.createdAt.toDate()
+                : new Date(),
+            status: data.status || "approved",
           });
         });
         setReviews(reviewList);
-        setFilteredReviews(reviewList); // Initialize filteredReviews with all reviews
+        setFilteredReviews(reviewList);
         setLoading(false);
       },
       (error) => {
@@ -57,51 +87,58 @@ function Reviews() {
     let results = reviews;
 
     if (searchTerm) {
-      results = results.filter(review =>
-        review.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        review.comment.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (review.productInfo && review.productInfo.name &&
-          review.productInfo.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      results = results.filter(
+        (review) =>
+          review.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          review.comment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (review.productInfo &&
+            review.productInfo.name &&
+            review.productInfo.name
+              .toLowerCase()
+              .includes(searchTerm.toLowerCase()))
       );
     }
 
     if (selectedRating > 0) {
-      results = results.filter(review => review.rating === selectedRating);
+      results = results.filter((review) => review.rating === selectedRating);
     }
 
-    if (selectedProduct !== 'all') {
-      results = results.filter(review =>
-        review.productInfo && review.productInfo.name === selectedProduct
+    if (selectedProduct !== "all") {
+      results = results.filter(
+        (review) =>
+          review.productInfo && review.productInfo.name === selectedProduct
       );
     }
 
-    // Sort results
-    results = results.sort((a, b) => {
+    results = [...results].sort((a, b) => {
       switch (sortBy) {
-        case 'rating':
+        case "rating":
           return b.rating - a.rating;
-        case 'date':
+        case "date":
         default:
           return b.date - a.date;
       }
     });
 
     setFilteredReviews(results);
-    setCurrentPage(1); // Reset to first page when filters change
+    setCurrentPage(1);
   }, [searchTerm, selectedRating, selectedProduct, reviews, sortBy]);
 
-  const productOptions = ['all', ...new Set(
-    reviews
-      .filter(review => review.productInfo && review.productInfo.name)
-      .map(review => review.productInfo.name)
-  )];
+  const productOptions = [
+    "all",
+    ...new Set(
+      reviews
+        .filter((review) => review.productInfo && review.productInfo.name)
+        .map((review) => review.productInfo.name)
+    ),
+  ];
 
   const toggleVisibility = async (id, currentVisibility) => {
     try {
-      const reviewRef = doc(db, 'reviews', id);
+      const reviewRef = doc(db, "reviews", id);
       await updateDoc(reviewRef, {
         isVisible: !currentVisibility,
-        updatedAt: serverTimestamp() // Use serverTimestamp for consistency
+        updatedAt: serverTimestamp(),
       });
     } catch (error) {
       console.error("Error toggling review visibility:", error);
@@ -109,43 +146,40 @@ function Reviews() {
     }
   };
 
-  // Delete function removed as per request.
-
   const renderStars = (rating) => {
     return [...Array(5)].map((_, index) => (
       <Star
         key={index}
         size={18}
-        className={index < rating ? 'fill-current' : ''}
+        className={index < rating ? "fill-current" : ""}
         style={{
-          color: index < rating ? '#F59E0B' : '#E5E7EB'
+          color: index < rating ? "#F59E0B" : "#E5E7EB",
         }}
       />
     ));
   };
 
   const formatDate = (date) => {
-    if (!date) return '';
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+    if (!date) return "";
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
     });
   };
 
   const formatTime = (date) => {
-    if (!date) return '';
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
+    if (!date) return "";
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   const clearFilters = () => {
-    setSearchTerm('');
+    setSearchTerm("");
     setSelectedRating(0);
-    setSelectedProduct('all');
-    // No need to setSortBy here as it's handled by the dropdown
+    setSelectedProduct("all");
   };
 
   const getAverageRating = () => {
@@ -156,7 +190,7 @@ function Reviews() {
 
   const getRatingDistribution = () => {
     const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-    reviews.forEach(review => {
+    reviews.forEach((review) => {
       if (review.rating in distribution) {
         distribution[review.rating] = (distribution[review.rating] || 0) + 1;
       }
@@ -164,8 +198,8 @@ function Reviews() {
     return distribution;
   };
 
-  const visibleCount = filteredReviews.filter(review => review.isVisible).length;
-  const hasActiveFilters = searchTerm || selectedRating > 0 || selectedProduct !== 'all';
+  const visibleCount = filteredReviews.filter((review) => review.isVisible).length;
+  const hasActiveFilters = searchTerm || selectedRating > 0 || selectedProduct !== "all";
   const averageRating = getAverageRating();
   const ratingDistribution = getRatingDistribution();
 
@@ -178,8 +212,7 @@ function Reviews() {
 
   const handlePageChange = (pageNumber) => {
     setCurrentPage(pageNumber);
-    // Optional: Scroll to top when changing pages
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   if (loading) {
@@ -202,7 +235,7 @@ function Reviews() {
         {/* Header with Stats */}
         <div className="mb-8">
           <div className="bg-white rounded-2xl shadow-xl border border-[#E6E6E6] overflow-hidden">
-            <div className="bg-[#A68B69] p-8 text-white">
+            <div className="bg-gradient-to-r from-[#A68B69] to-[#8a7456] p-8 text-white">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
                 <div className="mb-6 lg:mb-0">
                   <h1 className="text-4xl font-bold mb-2">Customer Reviews</h1>
@@ -268,7 +301,12 @@ function Reviews() {
                     <TrendingUp size={20} className="text-[#A68B69]" />
                   </div>
                   <div>
-                    <div className="text-2xl font-bold text-gray-900">{reviews.length > 0 ? Math.round((ratingDistribution[5] + ratingDistribution[4]) / reviews.length * 100) : 0}%</div>
+                    <div className="text-2xl font-bold text-gray-900">
+                      {reviews.length > 0
+                        ? Math.round(((ratingDistribution[5] + ratingDistribution[4]) / reviews.length) * 100)
+                        : 0}
+                      %
+                    </div>
                     <div className="text-sm text-[#CAC8C5]">Positive</div>
                   </div>
                 </div>
@@ -282,9 +320,15 @@ function Reviews() {
                   <div className="flex items-center gap-2 text-[#A68B69]">
                     <Filter size={16} />
                     <span className="font-medium">Active Filters:</span>
-                    {searchTerm && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">Search: "{searchTerm}"</span>}
-                    {selectedRating > 0 && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedRating} Stars</span>}
-                    {selectedProduct !== 'all' && <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedProduct}</span>}
+                    {searchTerm && (
+                      <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">Search: "{searchTerm}"</span>
+                    )}
+                    {selectedRating > 0 && (
+                      <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedRating} Stars</span>
+                    )}
+                    {selectedProduct !== "all" && (
+                      <span className="bg-[#CAC8C5] px-2 py-1 rounded text-xs">{selectedProduct}</span>
+                    )}
                   </div>
                   <button
                     onClick={clearFilters}
@@ -300,10 +344,10 @@ function Reviews() {
         </div>
 
         {/* Enhanced Filters */}
-        <div className="bg-white rounded-2xl shadow-lg border border-[#E6E6E6] mb-8">
+        <div className="bg-white rounded-2xl shadow-lg border border-[#E6E6E6] mb-8 overflow-hidden">
           <div className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Search size={20} className="text-[#CAC8C5]" />
+            <div className="flex items-center gap-2 mb-6">
+              <Search size={20} className="text-[#A68B69]" />
               <h3 className="text-lg font-semibold text-gray-900">Search & Filter</h3>
             </div>
 
@@ -338,9 +382,13 @@ function Reviews() {
                 className="px-4 py-3 border border-[#E6E6E6] rounded-xl focus:ring-2 focus:ring-[#A68B69] focus:border-transparent transition-all"
               >
                 <option value="all">All Products</option>
-                {productOptions.filter(opt => opt !== 'all').map((product, index) => (
-                  <option key={index} value={product}>{product}</option>
-                ))}
+                {productOptions
+                  .filter((opt) => opt !== "all")
+                  .map((product, index) => (
+                    <option key={index} value={product}>
+                      {product}
+                    </option>
+                  ))}
               </select>
 
               <select
@@ -355,120 +403,130 @@ function Reviews() {
           </div>
         </div>
 
-        {/* Enhanced Reviews Grid with Pagination */}
+        {/* Rating Distribution Chart */}
+        <div className="bg-white rounded-2xl shadow-lg border border-[#E6E6E6] p-6 mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 size={20} className="text-[#A68B69]" />
+            <h3 className="text-lg font-semibold text-gray-900">Rating Distribution</h3>
+          </div>
+          <div className="space-y-3">
+            {[5, 4, 3, 2, 1].map((rating) => {
+              const count = ratingDistribution[rating] || 0;
+              const percentage = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
+              
+              return (
+                <div key={rating} className="flex items-center">
+                  <div className="w-16 flex items-center">
+                    <span className="text-sm font-medium text-gray-600 mr-2">{rating}</span>
+                    <Star size={16} className="fill-current text-yellow-400" />
+                  </div>
+                  <div className="flex-1 ml-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div
+                        className="bg-[#A68B69] h-2.5 rounded-full"
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                  <div className="w-16 text-right">
+                    <span className="text-sm font-medium text-gray-600">
+                      {count} ({Math.round(percentage)}%)
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Reviews List */}
         <div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {paginatedReviews.map((review) => (
               <div
                 key={review.id}
-                className={`bg-white rounded-2xl shadow-lg border-2 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
-                  review.isVisible
-                    ? 'border-green-200 hover:border-green-300'
-                    : 'border-red-200 hover:border-red-300 opacity-80'
+                className={`bg-white rounded-2xl shadow-lg border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${
+                  review.isVisible ? "border-green-100" : "border-red-100"
                 }`}
               >
-                {/* Enhanced Status Indicator */}
-                <div className={`h-2 w-full rounded-t-2xl ${
-                  review.isVisible ? 'bg-green-400' : 'bg-red-400'
-                }`} />
-
                 <div className="p-6">
-                  {/* Enhanced User Info */}
+                  {/* Review Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-[#A68B69] rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                      <div className="w-12 h-12 bg-gradient-to-br from-[#A68B69] to-[#8a7456] rounded-full flex items-center justify-center text-white font-bold shadow-md">
                         {review.avatar}
                       </div>
                       <div>
-                        <h3 className="font-bold text-gray-900 text-lg">{review.userName}</h3>
-                        <div className="flex items-center gap-2 text-sm text-[#CAC8C5]">
-                          <Calendar size={14} />
+                        <h3 className="font-bold text-gray-900">{review.userName}</h3>
+                        <div className="flex items-center gap-1 text-xs text-[#CAC8C5]">
+                          <Calendar size={12} />
                           <span>{formatDate(review.date)}</span>
                           <span>•</span>
-                          <Clock size={14} />
+                          <Clock size={12} />
                           <span>{formatTime(review.date)}</span>
                         </div>
-                        {review.orderId && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <Package size={12} className="text-[#CAC8C5]" />
-                            <span className="text-xs text-[#CAC8C5]">
-                              #{review.orderId.substring(0, 8)}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
-                    <div className={`px-3 py-2 rounded-full text-xs font-bold flex items-center gap-2 ${
-                      review.isVisible
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <div
+                      className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                        review.isVisible
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
                       {review.isVisible ? <CheckCircle size={14} /> : <XCircle size={14} />}
-                      {review.isVisible ? 'LIVE' : 'HIDDEN'}
+                      {review.isVisible ? "LIVE" : "HIDDEN"}
                     </div>
                   </div>
 
-                  {/* Enhanced Rating Display */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        {renderStars(review.rating)}
-                      </div>
-                      <span className="text-lg font-bold text-gray-800">
-                        {review.rating}.0
-                      </span>
-                    </div>
-                    <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      review.rating >= 4 ? 'bg-green-100 text-green-800' :
-                      review.rating >= 3 ? 'bg-[#E0DAD6] text-[#A68B69]' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {review.rating >= 4 ? 'Excellent' : review.rating >= 3 ? 'Good' : 'Poor'}
-                    </div>
+                  {/* Rating */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex gap-1">{renderStars(review.rating)}</div>
+                    <span className="text-lg font-bold text-gray-800">{review.rating}.0</span>
                   </div>
 
-                  {/* Enhanced Comment */}
+                  {/* Comment */}
                   <div className="mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <MessageSquare size={16} className="text-[#CAC8C5]" />
-                      <span className="text-sm font-medium text-[#CAC8C5]">Review</span>
-                    </div>
-                    <div className="bg-[#F9F9F9] rounded-xl p-4 border border-[#E6E6E6]">
-                      <p className="text-gray-800 leading-relaxed">
-                        "{review.comment}"
-                      </p>
-                    </div>
+                    <p className="text-gray-700 leading-relaxed">"{review.comment}"</p>
                   </div>
 
-                  {/* Enhanced Product Info */}
+                  {/* Product Info */}
                   {review.productInfo && (
-                    <div className="mb-6 p-4 bg-[#E0DAD6] rounded-xl border border-[#CAC8C5]">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Package size={16} className="text-[#A68B69]" />
+                    <div className="mb-4 p-3 bg-[#F9F9F9] rounded-lg border border-[#E6E6E6]">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Package size={14} className="text-[#A68B69]" />
                         <span className="text-sm font-medium text-[#A68B69]">Product Reviewed</span>
                       </div>
-                      <p className="font-medium text-gray-900">{review.productInfo.name}</p>
+                      <p className="font-semibold text-gray-900 text-sm">{review.productInfo.name}</p>
                       {review.productInfo.size && (
-                        <p className="text-sm text-[#CAC8C5]">Size: {review.productInfo.size}</p>
+                        <p className="text-xs text-[#CAC8C5] mt-1">Size: {review.productInfo.size}</p>
                       )}
                     </div>
                   )}
 
-                  {/* Enhanced Action Buttons */}
-                  <div className="flex items-center gap-3 pt-4 border-t border-[#E6E6E6]">
+                  {/* Order ID */}
+                  {review.orderId && (
+                    <div className="mb-4 text-xs text-[#CAC8C5]">
+                      Order: #{review.orderId.substring(0, 8)}...
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between pt-4 border-t border-[#E6E6E6]">
                     <button
                       onClick={() => toggleVisibility(review.id, review.isVisible)}
-                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
                         review.isVisible
-                          ? 'bg-[#E0DAD6] text-[#A68B69] hover:bg-[#CAC8C5] hover:scale-105'
-                          : 'bg-green-100 text-green-800 hover:bg-green-200 hover:scale-105'
+                          ? "bg-[#A68B69] text-white hover:bg-[#8a7456]"
+                          : "bg-green-100 text-green-800 hover:bg-green-200"
                       }`}
                     >
-                      {review.isVisible ? <EyeOff size={18} /> : <Eye size={18} />}
-                      {review.isVisible ? 'Hide' : 'Show'}
+                      {review.isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {review.isVisible ? "Hide" : "Show"}
                     </button>
-
-                    {/* Delete button removed as per request */}
+                    <div className="text-xs text-[#CAC8C5]">
+                      ID: {review.id.substring(0, 8)}...
+                    </div>
                   </div>
                 </div>
               </div>
@@ -481,56 +539,79 @@ function Reviews() {
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all"
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all font-medium"
               >
+                <ChevronLeft size={16} />
                 Previous
               </button>
-              {Array.from({ length: pageCount }).map((_, index) => {
-                const pageNumber = index + 1;
+              
+              {Array.from({ length: Math.min(5, pageCount) }).map((_, index) => {
+                let pageNumber;
+                if (pageCount <= 5) {
+                  pageNumber = index + 1;
+                } else if (currentPage <= 3) {
+                  pageNumber = index + 1;
+                } else if (currentPage >= pageCount - 2) {
+                  pageNumber = pageCount - 4 + index;
+                } else {
+                  pageNumber = currentPage - 2 + index;
+                }
+                
                 return (
                   <button
                     key={pageNumber}
                     onClick={() => handlePageChange(pageNumber)}
-                    className={`px-4 py-2 rounded-lg transition-all ${
+                    className={`px-3 py-2 rounded-lg transition-all font-medium ${
                       currentPage === pageNumber
-                        ? 'bg-[#A68B69] text-white font-semibold'
-                        : 'bg-white border border-[#E6E6E6] text-[#A68B69] hover:bg-[#F9F9F9]'
+                        ? "bg-[#A68B69] text-white"
+                        : "bg-white border border-[#E6E6E6] text-[#A68B69] hover:bg-[#F9F9F9]"
                     }`}
                   >
                     {pageNumber}
                   </button>
                 );
               })}
+              
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === pageCount}
-                className="px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all"
+                className="flex items-center gap-1 px-4 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all font-medium"
               >
                 Next
+                <ChevronRight size={16} />
               </button>
+            </div>
+          )}
+
+          {/* Page Info */}
+          {totalReviews > REVIEWS_PER_PAGE && (
+            <div className="text-center mt-4">
+              <span className="text-[#CAC8C5] font-medium">
+                Showing {startIndex + 1}-{Math.min(endIndex, totalReviews)} of {totalReviews} reviews
+              </span>
             </div>
           )}
         </div>
 
-        {/* Enhanced Empty State */}
+        {/* Empty State */}
         {filteredReviews.length === 0 && (
           <div className="text-center py-16">
             <div className="bg-white rounded-2xl shadow-lg p-12 max-w-md mx-auto">
-              <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Star size={32} className="text-gray-400" />
+              <div className="w-20 h-20 bg-[#E0DAD6] rounded-full flex items-center justify-center mx-auto mb-6">
+                <Star size={32} className="text-[#CAC8C5]" />
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                {hasActiveFilters ? 'No matching reviews found' : 'No reviews yet'}
+                {hasActiveFilters ? "No matching reviews found" : "No reviews yet"}
               </h3>
               <p className="text-gray-600 mb-6 leading-relaxed">
                 {hasActiveFilters
-                  ? 'Try adjusting your search criteria to find the reviews you\'re looking for.'
-                  : 'Customer reviews will appear here once they start submitting feedback about your products.'}
+                  ? "Try adjusting your search criteria to find the reviews you're looking for."
+                  : "Customer reviews will appear here once they start submitting feedback about your products."}
               </p>
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl"
+                  className="px-6 py-3 bg-[#A68B69] text-white rounded-lg hover:bg-[#8a7456] transition-all duration-200 font-medium"
                 >
                   Clear All Filters
                 </button>

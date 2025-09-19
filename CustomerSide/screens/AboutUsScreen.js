@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,160 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Dimensions,
+  ActivityIndicator,
+  Alert,
+  Linking,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { getFirestore, doc, getDoc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { db } from "../Backend/firebaseConfig";
 
 const { width } = Dimensions.get('window');
 
 const AboutUsScreen = ({ navigation }) => {
   const [currentView, setCurrentView] = useState('menu');
+  const [loading, setLoading] = useState(true);
+  const [businessInfo, setBusinessInfo] = useState({
+    name: 'Your Business Name',
+    description:
+      'We are a leading company dedicated to providing exceptional services and products to our valued customers. Our commitment to quality and innovation drives everything we do.',
+    founded: '2020',
+    location: 'City, Country',
+    mission:
+      'To deliver outstanding value through innovative solutions and exceptional customer service.',
+    vision:
+      'To be the leading provider in our industry, recognized for our commitment to excellence and sustainability.',
+    aboutUs: '', // Added aboutUs field
+  });
+  const [contactInfo, setContactInfo] = useState({
+    telephone1: '',
+    telephone2: '',
+    email: '',
+    supportEmail: '',
+    location: '',
+  });
+  const [faqs, setFaqs] = useState([]);
+  const [openFAQ, setOpenFAQ] = useState(null);
+  const [selectedContactMethod, setSelectedContactMethod] = useState(null);
+
+  // ✅ Fetch data from Firestore with real-time listeners
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Set up real-time listeners
+        const businessUnsubscribe = onSnapshot(
+          doc(db, 'settings', 'businessInfo'),
+          (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              setBusinessInfo((prev) => ({
+                ...prev,
+                name: data.businessName || prev.name,
+                description: data.description || prev.description,
+                aboutUs: data.aboutUs || prev.aboutUs, // Added aboutUs
+                founded: data.foundedYear || prev.founded,
+                location: data.location || prev.location,
+                mission: data.mission || prev.mission,
+                vision: data.vision || prev.vision,
+              }));
+            }
+          }
+        );
+
+        const contactUnsubscribe = onSnapshot(
+          doc(db, 'settings', 'contactInfo'),
+          (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              setContactInfo((prev) => ({
+                ...prev,
+                telephone1: data.telephone1 || prev.telephone1,
+                telephone2: data.telephone2 || prev.telephone2,
+                email: data.email || prev.email,
+                supportEmail: data.supportEmail || prev.supportEmail,
+                location: data.location || prev.location,
+              }));
+            }
+          }
+        );
+
+        // Fetch FAQs from Firestore
+        const faqQuery = query(collection(db, 'faqs'), orderBy('order', 'asc'));
+        const faqUnsubscribe = onSnapshot(faqQuery, (snapshot) => {
+          const faqList = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            // Only show visible FAQs
+            if (data.isVisible !== false) {
+              faqList.push({ id: doc.id, ...data });
+            }
+          });
+          setFaqs(faqList);
+        });
+
+        // Cleanup function to unsubscribe from listeners
+        return () => {
+          businessUnsubscribe();
+          contactUnsubscribe();
+          faqUnsubscribe();
+        };
+      } catch (error) {
+        console.error('Error setting up Firestore listeners:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const toggleFAQ = (id) => {
+    setOpenFAQ(openFAQ === id ? null : id);
+  };
+
+  const handleContactMethodSelect = (method) => {
+    setSelectedContactMethod(method);
+  };
+
+  const handleSendMessage = () => {
+    if (!selectedContactMethod) {
+      Alert.alert('Selection Required', 'Please select a contact method first.');
+      return;
+    }
+
+    switch(selectedContactMethod) {
+      case 'telephone1':
+        if (contactInfo.telephone1) {
+          Linking.openURL(`tel:${contactInfo.telephone1}`);
+        } else {
+          Alert.alert('Error', 'Telephone number is not available.');
+        }
+        break;
+      case 'telephone2':
+        if (contactInfo.telephone2) {
+          Linking.openURL(`tel:${contactInfo.telephone2}`);
+        } else {
+          Alert.alert('Error', 'Contact number is not available.');
+        }
+        break;
+      case 'email':
+        if (contactInfo.email) {
+          Linking.openURL(`mailto:${contactInfo.email}`);
+        } else {
+          Alert.alert('Error', 'General email is not available.');
+        }
+        break;
+      case 'supportEmail':
+        if (contactInfo.supportEmail) {
+          Linking.openURL(`mailto:${contactInfo.supportEmail}`);
+        } else {
+          Alert.alert('Error', 'Support email is not available.');
+        }
+        break;
+      default:
+        Alert.alert('Error', 'Invalid contact method selected.');
+    }
+  };
 
   const menuItems = [
     {
@@ -33,39 +180,6 @@ const AboutUsScreen = ({ navigation }) => {
       title: 'Contact Us',
       icon: 'mail-outline',
       onPress: () => setCurrentView('contact'),
-    },
-  ];
-
-  const businessInfo = {
-    name: 'Your Business Name',
-    description: 'We are a leading company dedicated to providing exceptional services and products to our valued customers. Our commitment to quality and innovation drives everything we do.',
-    founded: '2020',
-    location: 'City, Country',
-    employees: '50+',
-    mission: 'To deliver outstanding value through innovative solutions and exceptional customer service.',
-    vision: 'To be the leading provider in our industry, recognized for our commitment to excellence and sustainability.',
-  };
-
-  const faqData = [
-    {
-      id: 1,
-      question: 'What services do you offer?',
-      answer: 'We offer a comprehensive range of services including product development, consulting, and customer support to meet all your business needs.',
-    },
-    {
-      id: 2,
-      question: 'How can I contact customer support?',
-      answer: 'You can reach our customer support team through email, phone, or our online chat system. We are available 24/7 to assist you.',
-    },
-    {
-      id: 3,
-      question: 'What are your business hours?',
-      answer: 'Our business hours are Monday through Friday, 9:00 AM to 6:00 PM. However, our online services are available 24/7.',
-    },
-    {
-      id: 4,
-      question: 'Do you offer international shipping?',
-      answer: 'Yes, we offer international shipping to most countries worldwide. Shipping costs and delivery times vary by location.',
     },
   ];
 
@@ -96,7 +210,7 @@ const AboutUsScreen = ({ navigation }) => {
           Get to know more about our company, services, and how we can help you.
         </Text>
       </View>
-      
+
       <View style={styles.menuSection}>
         {menuItems.map((item) => (
           <MenuItem key={item.id} item={item} />
@@ -105,132 +219,309 @@ const AboutUsScreen = ({ navigation }) => {
     </View>
   );
 
-  const BusinessInfoView = () => {
-    return (
-      <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <View style={styles.infoCard}>
-            <Text style={styles.companyName}>{businessInfo.name}</Text>
-            <Text style={styles.description}>{businessInfo.description}</Text>
-            
-            <View style={styles.infoGrid}>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Founded</Text>
-                <Text style={styles.infoValue}>{businessInfo.founded}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Location</Text>
-                <Text style={styles.infoValue}>{businessInfo.location}</Text>
-              </View>
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>Team Size</Text>
-                <Text style={styles.infoValue}>{businessInfo.employees}</Text>
-              </View>
+  const BusinessInfoView = () => (
+    <ScrollView
+      style={styles.contentView}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.section}>
+        {/* Header Section */}
+        <View style={styles.businessHeader}>
+          <View style={styles.businessLogo}>
+            <FontAwesome5 name="building" size={40} color="#A68B69" />
+          </View>
+          <Text style={styles.companyName}>{businessInfo.name}</Text>
+          <Text style={styles.companyTagline}>Excellence in every service</Text>
+        </View>
+
+        {/* Description Section */}
+        <View style={styles.infoCard}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="information-circle" size={24} color="#A68B69" />
+            <Text style={styles.cardTitle}>About Us</Text>
+          </View>
+          <Text style={styles.description}>
+            {businessInfo.aboutUs || businessInfo.description}
+          </Text>
+        </View>
+
+        {/* Stats Section */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <View style={styles.statIcon}>
+              <Ionicons name="calendar" size={24} color="#A68B69" />
             </View>
-            
-            <View style={styles.missionVision}>
-              <View style={styles.mvCard}>
-                <Text style={styles.mvTitle}>Our Mission</Text>
-                <Text style={styles.mvText}>{businessInfo.mission}</Text>
+            <Text style={styles.statValue}>{businessInfo.founded}</Text>
+            <Text style={styles.statLabel}>Founded</Text>
+          </View>
+          
+          <View style={styles.statItem}>
+            <View style={styles.statIcon}>
+              <Ionicons name="location" size={24} color="#A68B69" />
+            </View>
+            <Text style={styles.statValue}>{businessInfo.location.split(',')[0]}</Text>
+            <Text style={styles.statLabel}>Location</Text>
+          </View>
+        </View>
+
+        {/* Mission & Vision Section */}
+        <View style={styles.missionVision}>
+          <View style={styles.mvCard}>
+            <View style={styles.mvHeader}>
+              <Ionicons name="rocket" size={24} color="#A68B69" />
+              <Text style={styles.mvTitle}>Our Mission</Text>
+            </View>
+            <Text style={styles.mvText}>{businessInfo.mission}</Text>
+          </View>
+
+          <View style={styles.mvCard}>
+            <View style={styles.mvHeader}>
+              <Ionicons name="eye" size={24} color="#A68B69" />
+              <Text style={styles.mvTitle}>Our Vision</Text>
+            </View>
+            <Text style={styles.mvText}>{businessInfo.vision}</Text>
+          </View>
+        </View>
+
+        {/* Values Section */}
+        <View style={styles.valuesContainer}>
+          <Text style={styles.sectionTitle}>Our Values</Text>
+          <View style={styles.valuesList}>
+            <View style={styles.valueItem}>
+              <View style={styles.valueIcon}>
+                <Ionicons name="heart" size={20} color="#A68B69" />
               </View>
-              
-              <View style={styles.mvCard}>
-                <Text style={styles.mvTitle}>Our Vision</Text>
-                <Text style={styles.mvText}>{businessInfo.vision}</Text>
+              <Text style={styles.valueText}>Customer First</Text>
+            </View>
+            <View style={styles.valueItem}>
+              <View style={styles.valueIcon}>
+                <Ionicons name="shield-checkmark" size={20} color="#A68B69" />
               </View>
+              <Text style={styles.valueText}>Quality Assurance</Text>
+            </View>
+            <View style={styles.valueItem}>
+              <View style={styles.valueIcon}>
+                <Ionicons name="bulb" size={20} color="#A68B69" />
+              </View>
+              <Text style={styles.valueText}>Innovation</Text>
+            </View>
+            <View style={styles.valueItem}>
+              <View style={styles.valueIcon}>
+                <Ionicons name="people" size={20} color="#A68B69" />
+              </View>
+              <Text style={styles.valueText}>Teamwork</Text>
             </View>
           </View>
         </View>
-      </ScrollView>
-    );
-  };
+      </View>
+    </ScrollView>
+  );
 
-  const FAQView = () => {
-    const [expandedFAQ, setExpandedFAQ] = useState(null);
-
-    const toggleFAQ = (faqId) => {
-      setExpandedFAQ(expandedFAQ === faqId ? null : faqId);
-    };
-
-    return (
-      <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
+  const FAQView = () => (
+    <ScrollView
+      style={styles.contentView}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.section}>
+        {/* FAQ Header Section */}
+        <View style={styles.faqHeaderContainer}>
+          <View style={styles.faqIconContainer}>
+            <Ionicons name="help-circle" size={50} color="#A68B69" />
+          </View>
           <Text style={styles.faqHeader}>Frequently Asked Questions</Text>
           <Text style={styles.faqSubheader}>
             Find answers to the most common questions about our services.
           </Text>
-          
-          {faqData.map((faq) => (
-            <TouchableOpacity
-              key={faq.id}
-              style={styles.faqItem}
-              onPress={() => toggleFAQ(faq.id)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqQuestion}>
-                <Text style={styles.faqQuestionText}>{faq.question}</Text>
-                <Ionicons
-                  name={expandedFAQ === faq.id ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color="#A68B69"
-                />
-              </View>
-              {expandedFAQ === faq.id && (
-                <View style={styles.faqAnswer}>
-                  <Text style={styles.faqAnswerText}>{faq.answer}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
         </View>
-      </ScrollView>
-    );
-  };
+
+        {faqs.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="help-circle-outline" size={60} color="#CAC8C5" />
+            <Text style={styles.emptyStateText}>
+              No FAQs available at the moment
+            </Text>
+            <Text style={styles.emptyStateSubtext}>
+              Please check back later or contact us directly for any questions.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.faqContainer}>
+            {faqs.map((faq) => (
+              <View key={faq.id} style={styles.faqItem}>
+                <TouchableOpacity
+                  style={styles.faqQuestion}
+                  onPress={() => toggleFAQ(faq.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.faqQuestionContent}>
+                    <Ionicons name="help" size={20} color="#A68B69" style={styles.faqQIcon} />
+                    <Text style={styles.faqQuestionText}>{faq.question}</Text>
+                  </View>
+                  <Ionicons
+                    name={openFAQ === faq.id ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#A68B69"
+                  />
+                </TouchableOpacity>
+                {openFAQ === faq.id && (
+                  <View style={styles.faqAnswer}>
+                    <View style={styles.faqAnswerContent}>
+                      <Ionicons name="information-circle" size={20} color="#A68B69" style={styles.faqAIcon} />
+                      <Text style={styles.faqAnswerText}>{faq.answer}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Support CTA Section */}
+        <View style={styles.supportCta}>
+          <Text style={styles.supportCtaText}>Still have questions?</Text>
+          <Text style={styles.supportCtaSubtext}>We're here to help you with any questions you may have.</Text>
+          <TouchableOpacity 
+            style={styles.supportCtaButton}
+            onPress={() => setCurrentView('contact')}
+          >
+            <Text style={styles.supportCtaButtonText}>Contact Support</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
+  );
 
   const ContactView = () => (
-    <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.contentView}
+      showsVerticalScrollIndicator={false}
+    >
       <View style={styles.section}>
-        <View style={styles.contactContainer}>
+        {/* Contact Header Section */}
+        <View style={styles.contactHeader}>
+          <View style={styles.contactIconContainer}>
+            <Ionicons name="chatbubbles" size={50} color="#A68B69" />
+          </View>
           <Text style={styles.contactTitle}>Get in Touch</Text>
           <Text style={styles.contactSubtitle}>
-            We'd love to hear from you. Send us a message and we'll respond as soon as possible.
+            We'd love to hear from you. Please select how you'd like to contact us.
           </Text>
-          
+        </View>
+
+        <View style={styles.contactContainer}>
+          {/* Contact Methods */}
           <View style={styles.contactMethods}>
-            <TouchableOpacity style={styles.contactMethod}>
+            <Text style={styles.contactMethodsTitle}>Contact Methods</Text>
+            
+            <TouchableOpacity 
+              style={[
+                styles.contactMethod,
+                selectedContactMethod === 'telephone1' && styles.selectedContactMethod
+              ]}
+              onPress={() => handleContactMethodSelect('telephone1')}
+            >
+              <View style={styles.contactIcon}>
+               <Ionicons name="call" size={24} color="#A68B69" />
+              </View>
+              <View style={styles.contactInfo}>
+                <Text style={styles.contactLabel}>Primary Telephone</Text>
+                <Text style={styles.contactValue}>
+                  {contactInfo.telephone1 || '+1 (555) 123-4567'}
+                </Text>
+              </View>
+              {selectedContactMethod === 'telephone1' && (
+                <Ionicons name="checkmark-circle" size={24} color="#A68B69" />
+              )}
+            </TouchableOpacity>
+
+            {contactInfo.telephone2 ? (
+              <TouchableOpacity 
+                style={[
+                  styles.contactMethod,
+                  selectedContactMethod === 'telephone2' && styles.selectedContactMethod
+                ]}
+                onPress={() => handleContactMethodSelect('telephone2')}
+              >
+                <View style={styles.contactIcon}>
+                  <Ionicons name="call" size={24} color="#A68B69" />
+                </View>
+                <View style={styles.contactInfo}>
+                  <Text style={styles.contactLabel}>Secondary Telephone</Text>
+                  <Text style={styles.contactValue}>
+                    {contactInfo.telephone2}
+                  </Text>
+                </View>
+                {selectedContactMethod === 'telephone2' && (
+                  <Ionicons name="checkmark-circle" size={24} color="#A68B69" />
+                )}
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity 
+              style={[
+                styles.contactMethod,
+                selectedContactMethod === 'email' && styles.selectedContactMethod
+              ]}
+              onPress={() => handleContactMethodSelect('email')}
+            >
               <View style={styles.contactIcon}>
                 <Ionicons name="mail" size={24} color="#A68B69" />
               </View>
               <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Email</Text>
-                <Text style={styles.contactValue}>info@yourbusiness.com</Text>
+                <Text style={styles.contactLabel}>General Email</Text>
+                <Text style={styles.contactValue}>
+                  {contactInfo.email || 'info@yourbusiness.com'}
+                </Text>
               </View>
+              {selectedContactMethod === 'email' && (
+                <Ionicons name="checkmark-circle" size={24} color="#A68B69" />
+              )}
             </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.contactMethod}>
+
+            <TouchableOpacity 
+              style={[
+                styles.contactMethod,
+                selectedContactMethod === 'supportEmail' && styles.selectedContactMethod
+              ]}
+              onPress={() => handleContactMethodSelect('supportEmail')}
+            >
               <View style={styles.contactIcon}>
-                <Ionicons name="call" size={24} color="#A68B69" />
+                <Ionicons name="mail" size={24} color="#A68B69" />
               </View>
               <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Phone</Text>
-                <Text style={styles.contactValue}>+1 (555) 123-4567</Text>
+                <Text style={styles.contactLabel}>Support Email</Text>
+                <Text style={styles.contactValue}>
+                  {contactInfo.supportEmail || 'support@yourbusiness.com'}
+                </Text>
               </View>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.contactMethod}>
-              <View style={styles.contactIcon}>
-                <Ionicons name="location" size={24} color="#A68B69" />
-              </View>
-              <View style={styles.contactInfo}>
-                <Text style={styles.contactLabel}>Address</Text>
-                <Text style={styles.contactValue}>123 Business Street, City, Country</Text>
-              </View>
+              {selectedContactMethod === 'supportEmail' && (
+                <Ionicons name="checkmark-circle" size={24} color="#A68B69" />
+              )}
             </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity style={styles.contactButton}>
-            <Text style={styles.contactButtonText}>Send Message</Text>
+
+          {/* Contact Button */}
+          <TouchableOpacity 
+            style={[
+              styles.contactButton,
+              !selectedContactMethod && styles.contactButtonDisabled
+            ]}
+            onPress={handleSendMessage}
+            disabled={!selectedContactMethod}
+          >
+            <Ionicons name="paper-plane" size={20} color="#FFFFFF" style={styles.contactButtonIcon} />
+            <Text style={styles.contactButtonText}>
+              {selectedContactMethod ? 'Contact Now' : 'Select a Contact Method'}
+            </Text>
           </TouchableOpacity>
+
+          {/* Additional Info */}
+          <View style={styles.contactAdditionalInfo}>
+            <Text style={styles.contactAdditionalTitle}>Business Hours</Text>
+            <Text style={styles.contactAdditionalText}>Monday - Friday: 9:00 AM - 6:00 PM</Text>
+            <Text style={styles.contactAdditionalText}>Saturday: 10:00 AM - 4:00 PM</Text>
+            <Text style={styles.contactAdditionalText}>Sunday: Closed</Text>
+          </View>
         </View>
       </View>
     </ScrollView>
@@ -251,29 +542,54 @@ const AboutUsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
+      {loading ? (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#A68B69" />
+        </View>
+      ) : (
+        <>
+         <View style={styles.header}>
+         <TouchableOpacity
           style={styles.backButton}
           onPress={() => {
+            console.log('Back button pressed');
+            console.log('Current view:', currentView);
+            console.log('Navigation prop:', navigation);
+            
             if (currentView === 'menu') {
-              navigation?.goBack();
+              if (navigation) {
+                navigation.goBack();
+              } else {
+                console.log('Navigation prop is undefined');
+              }
             } else {
               setCurrentView('menu');
+              setSelectedContactMethod(null);
             }
           }}
         >
           <Ionicons name="arrow-back" size={24} color="#A68B69" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {currentView === 'menu' ? '' : 
-            currentView === 'business' ? 'Business Information' :
-            currentView === 'faq' ? 'FAQs' : 'Contact Us'}
-        </Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      {renderCurrentView()}
+          <Text style={styles.headerTitle}>
+            {currentView === 'menu'
+              ? ''
+              : currentView === 'business'
+              ? 'Business Information'
+              : currentView === 'faq'
+              ? 'FAQs'
+              : 'Contact Us'}
+          </Text>
+          <View style={styles.placeholder} />
+</View>
+          {renderCurrentView()}
+        </>
+      )}
     </SafeAreaView>
   );
 };
@@ -286,292 +602,483 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
     paddingTop: 50,
-    paddingBottom: 20,
-    backgroundColor: '#F9F9F9',
+    paddingBottom: 20, 
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E6E6E6',
+    borderBottomColor: '#E0DAD6',
+    position: 'relative',
   },
   backButton: {
-    padding: 10,
+    padding: 8,
+    position: 'absolute',
+    left: 16,
+    top: 50, 
+    zIndex: 1,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 23,
     fontWeight: 'bold',
     color: '#A68B69',
+    textAlign: 'center',
+    marginTop: 8, 
   },
   placeholder: {
-    width: 40,
+    width: 40, 
   },
+ 
   menuContainer: {
     flex: 1,
-    paddingHorizontal: 20,
+    padding: 16,
   },
-  welcomeSection: {
-    paddingVertical: 30,
-    alignItems: 'center',
+welcomeSection: {
+    marginBottom: 24,
+    alignItems: 'center', 
   },
   welcomeTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#A68B69',
-    marginBottom: 10,
+    color: '#A68b69',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   welcomeSubtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#666666',
+    lineHeight: 22,
     textAlign: 'center',
-    lineHeight: 24,
-    paddingHorizontal: 20,
   },
   menuSection: {
-    flex: 1,
+    backgroundColor: '##FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   menuItem: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginBottom: 16,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
   },
   menuItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E0DAD6',
-    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F5F0EB',
     justifyContent: 'center',
-    marginRight: 16,
+    alignItems: 'center',
+    marginRight: 12,
   },
   textContainer: {
     flex: 1,
   },
   menuItemText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
+    color: '#333333',
+    marginBottom: 2,
   },
   menuItemSubtext: {
     fontSize: 14,
-    color: '#888',
+    color: '#666666',
   },
   contentView: {
     flex: 1,
-    paddingHorizontal: 20,
+    backgroundColor: '#F9F9F9',
   },
   section: {
-    paddingVertical: 20,
+    padding: 16,
+  },
+  businessHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  businessLogo: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F5F0EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  companyName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  companyTagline: {
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center',
   },
   infoCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 24,
-    elevation: 3,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 2,
   },
-  companyName: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: '#A68B69',
-    textAlign: 'center',
-    marginBottom: 16,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333333',
+    marginLeft: 8,
   },
   description: {
     fontSize: 16,
-    color: '#666',
+    color: '#666666',
     lineHeight: 24,
-    textAlign: 'center',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     marginBottom: 24,
   },
-  infoGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 30,
-  },
-  infoItem: {
-    flex: 1,
+  statItem: {
     alignItems: 'center',
-    paddingVertical: 16,
-    backgroundColor: '#E0DAD6',
-    marginHorizontal: 4,
-    borderRadius: 12,
+    flex: 1,
   },
-  infoLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    fontWeight: '500',
+  statIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F0EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#666666',
   },
   missionVision: {
-    gap: 16,
+    marginBottom: 24,
   },
   mvCard: {
-    backgroundColor: '#CAC8C5',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  mvHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   mvTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#A68B69',
-    marginBottom: 8,
+    color: '#333333',
+    marginLeft: 8,
   },
   mvText: {
+    fontSize: 16,
+    color: '#666666',
+    lineHeight: 24,
+  },
+  valuesContainer: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  valuesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  valueItem: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  valueIcon: {
+    marginRight: 8,
+  },
+  valueText: {
     fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    color: '#333333',
+    fontWeight: '500',
+  },
+  faqHeaderContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  faqIconContainer: {
+    marginBottom: 16,
   },
   faqHeader: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#A68B69',
-    textAlign: 'center',
+    color: '#333333',
     marginBottom: 8,
+    textAlign: 'center',
   },
   faqSubheader: {
     fontSize: 16,
-    color: '#666',
+    color: '#666666',
     textAlign: 'center',
-    marginBottom: 24,
     lineHeight: 22,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666666',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999999',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  faqContainer: {
+    marginBottom: 24,
   },
   faqItem: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
-    elevation: 2,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   faqQuestion: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#E6E6E6',
+  },
+  faqQuestionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  faqQIcon: {
+    marginRight: 12,
   },
   faqQuestionText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
+    fontWeight: '600',
+    color: '#333333',
     flex: 1,
-    marginRight: 10,
   },
   faqAnswer: {
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
     padding: 16,
-    backgroundColor: '#FFFFFF',
+  },
+  faqAnswerContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  faqAIcon: {
+    marginRight: 12,
+    marginTop: 2,
   },
   faqAnswerText: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    fontSize: 15,
+    color: '#666666',
+    lineHeight: 22,
+    flex: 1,
   },
-  contactContainer: {
+  supportCta: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 24,
-    elevation: 3,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+    elevation: 2,
+  },
+  supportCtaText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  supportCtaSubtext: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  supportCtaButton: {
+    backgroundColor: '#A68B69',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  supportCtaButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  contactHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  contactIconContainer: {
+    marginBottom: 16,
   },
   contactTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#A68B69',
-    textAlign: 'center',
+    color: '#333333',
     marginBottom: 8,
+    textAlign: 'center',
   },
   contactSubtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#666666',
     textAlign: 'center',
-    marginBottom: 30,
     lineHeight: 22,
   },
+  contactContainer: {
+    marginBottom: 24,
+  },
   contactMethods: {
-    marginBottom: 30,
+    marginBottom: 24,
+  },
+  contactMethodsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 16,
   },
   contactMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    backgroundColor: '#E0DAD6',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  selectedContactMethod: {
+    borderWidth: 2,
+    borderColor: '#A68B69',
   },
   contactIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F5F0EB',
     justifyContent: 'center',
-    marginRight: 16,
+    alignItems: 'center',
+    marginRight: 12,
   },
   contactInfo: {
     flex: 1,
   },
   contactLabel: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 2,
   },
   contactValue: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
+    fontWeight: '600',
+    color: '#333333',
   },
   contactButton: {
-    backgroundColor: '#A68B69',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 25,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#A68B69',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  contactButtonDisabled: {
+    backgroundColor: '#CAC8C5',
+  },
+  contactButtonIcon: {
+    marginRight: 8,
   },
   contactButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+  },
+  contactAdditionalInfo: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '##000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  contactAdditionalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 12,
+  },
+  contactAdditionalText: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 4,
   },
 });
 

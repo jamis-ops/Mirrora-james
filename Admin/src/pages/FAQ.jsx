@@ -268,7 +268,7 @@ export default function FAQ() {
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && faqToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-zoom-in">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200 mb-6">
               <h2 className="text-xl font-bold text-gray-900">Confirm Deletion</h2>
@@ -310,7 +310,7 @@ export default function FAQ() {
 
       {/* Edit FAQ Modal */}
       {isEditModalOpen && currentFAQ && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-zoom-in">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200 mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Edit FAQ</h2>
@@ -396,7 +396,7 @@ export default function FAQ() {
 
       {/* Create New FAQ Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center p-4 z-50 transition-opacity duration-300">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto animate-zoom-in">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200 mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Create New FAQ</h2>
