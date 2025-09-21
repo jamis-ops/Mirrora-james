@@ -657,6 +657,55 @@ Ready to proceed? Click the button below to confirm your custom order!`;
     );
   };
 
+  // New function to render file attachments (images)
+  const renderFileAttachment = (fileData, isAdminMessage) => {
+    if (!fileData?.url) {
+      return (
+        <div className={`flex items-center bg-red-50 border border-red-200 rounded-lg p-3 mb-2 ${
+          isAdminMessage ? 'bg-blue-100 border-blue-200' : ''
+        }`}>
+          <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className={`text-sm ${isAdminMessage ? 'text-blue-800' : 'text-red-600'}`}>
+            Image unavailable
+          </span>
+        </div>
+      );
+    }
+
+    if (fileData.type === 'image') {
+      return (
+        <div className="mb-2">
+          <img
+            src={fileData.url}
+            alt={fileData.name || 'Uploaded image'}
+            className="max-w-[250px] rounded-lg shadow-sm"
+            onError={(e) => console.error('Image load error:', e)}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className={`flex items-center bg-gray-100 border border-gray-200 rounded-lg p-3 mb-2 ${
+        isAdminMessage ? 'bg-blue-100 border-blue-200' : ''
+      }`}>
+        <svg className="w-5 h-5 text-gray-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <div>
+          <p className={`text-sm font-medium ${isAdminMessage ? 'text-blue-800' : 'text-gray-800'}`}>
+            {fileData.name || 'Unnamed file'}
+          </p>
+          <p className={`text-xs ${isAdminMessage ? 'text-blue-600' : 'text-gray-600'}`}>
+            {(fileData.size / 1024).toFixed(2)} KB
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 font-sans">
       {/* Left Sidebar - Conversation List */}
@@ -847,13 +896,14 @@ Ready to proceed? Click the button below to confirm your custom order!`;
                         </div>
                       )}
                       <div className={`max-w-xs lg:max-w-md ${
-                        msg.messageType === 'customization_request' || msg.messageType === 'customization_proposal' ? 'max-w-4xl' : ''
+                        msg.messageType === 'customization_request' || msg.messageType === 'customization_proposal' || msg.messageType === 'file' ? 'max-w-4xl' : ''
                       }`}>
                         {/* Special message types */}
                         {msg.messageType === 'customization_request' && renderCustomizationMessage(msg)}
                         {msg.messageType === 'customization_proposal' && renderProposalMessage(msg)}
+                        {msg.messageType === 'file' && renderFileAttachment(msg.fileData, isAdminMessage)}
                         {/* Regular message bubble - only show if not a special message type */}
-                        {msg.messageType !== 'customization_request' && msg.messageType !== 'customization_proposal' && (
+                        {msg.messageType !== 'customization_request' && msg.messageType !== 'customization_proposal' && msg.messageType !== 'file' && (
                           <div className={`px-4 py-2 rounded-xl text-sm ${
                             isAdminMessage 
                               ? 'bg-blue-500 text-white rounded-br-none' 

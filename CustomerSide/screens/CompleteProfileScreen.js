@@ -1,16 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, ScrollView, Platform, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { useNavigation } from "@react-navigation/native";
-import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
-import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
-import * as ImagePicker from 'expo-image-picker'; // Add this import
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    TextInput,
+    Image,
+    ScrollView,
+    Platform,
+    Modal,
+    Pressable,
+    Alert,
+    ActivityIndicator,
+    Linking,
+} from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useNavigation } from '@react-navigation/native';
+import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from '@expo-google-fonts/league-spartan';
+import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from '@expo-google-fonts/montserrat';
+import * as ImagePicker from 'expo-image-picker';
 
 // --- Firebase Imports ---
-import { auth, db, storage } from '../Backend/firebaseConfig'; // Make sure storage is imported
-import { updateProfile, signInWithCustomToken } from 'firebase/auth';
+import { auth, db } from '../Backend/firebaseConfig';
+import { signInWithCustomToken } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Add storage functions
 
 export default function CompleteProfileScreen() {
     const navigation = useNavigation();
@@ -18,94 +31,154 @@ export default function CompleteProfileScreen() {
     const [phoneNumber, setPhoneNumber] = useState('');
     const [gender, setGender] = useState('');
     const [modalVisible, setModalVisible] = useState(false);
-    const [profileImage, setProfileImage] = useState(null); // Add state for profile image
-    const [uploading, setUploading] = useState(false); // Add state for image upload
+    const [profilePic, setProfilePic] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
-    // --- State for Backend Operations ---
-    const [loading, setLoading] = useState(true); // For initial data fetch
-    const [saving, setSaving] = useState(false);  // For when the user clicks save
-
-    const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold, });
+    const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
 
-    // --- Phone number validation function ---
+    // Phone number validation
     const handlePhoneNumberChange = (text) => {
-        // Remove any non-digit characters
         const cleanedText = text.replace(/[^0-9]/g, '');
-        
-        // Limit to 10 digits (without country code)
         if (cleanedText.length <= 10) {
             setPhoneNumber(cleanedText);
         }
     };
 
-    // --- Profile image selection function ---
-    const pickImage = async () => {
+    // Request permissions
+    const requestPermissions = async () => {
         try {
-            // Request permission to access media library
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            
-            if (status !== 'granted') {
-                Alert.alert('Permission required', 'Sorry, we need camera roll permissions to change your profile picture.');
-                return;
-            }
+            const { status: mediaLibraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
 
-            // Launch image picker
-            let result = await ImagePicker.launchImageLibraryAsync({
+            if (mediaLibraryStatus !== 'granted' || cameraStatus !== 'granted') {
+                Alert.alert(
+                    'Permissions Required',
+                    'Camera and photo library permissions are needed to upload images. Please enable them in settings.',
+                    [
+                        { text: 'OK', style: 'cancel' },
+                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                    ]
+                );
+                return false;
+            }
+            return true;
+        } catch (error) {
+            console.error('Permission request error:', error);
+            Alert.alert('Error', 'Failed to request permissions. Please try again.');
+            return false;
+        }
+    };
+
+    // Convert image to base64
+    const convertImageToBase64 = async (fileUri, mimeType) => {
+        if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+            throw new Error('Only JPEG and PNG images are supported.');
+        }
+
+        setUploadProgress(0);
+        console.log('🔄 Converting image to base64:', { fileUri, mimeType });
+
+        try {
+            const response = await fetch(fileUri);
+            const blob = await response.blob();
+
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64String = reader.result;
+                    const dataUrl = `data:${mimeType};base64,${base64String.split(',')[1]}`;
+                    
+                    const base64Length = base64String.length;
+                    const estimatedSize = (base64Length * 0.75);
+                    
+                    if (estimatedSize > 900000) {
+                        reject(new Error('Image is too large. Please select a smaller image (under 900 KB).'));
+                        return;
+                    }
+
+                    setUploadProgress(100);
+                    setTimeout(() => setUploadProgress(0), 500);
+                    resolve({
+                        url: dataUrl,
+                        type: 'image',
+                        mimeType,
+                    });
+                };
+                reader.onerror = () => {
+                    console.error('❌ Failed to convert image to base64');
+                    setUploadProgress(0);
+                    reject(new Error('Failed to convert image to base64. Please try again.'));
+                };
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('❌ Image processing failed:', error);
+            setUploadProgress(0);
+            throw error;
+        }
+    };
+
+    // Profile image selection
+    const pickImage = async () => {
+        if (uploading) {
+            Alert.alert('Processing in Progress', 'Please wait for the current operation to complete.');
+            return;
+        }
+
+        const hasPermission = await requestPermissions();
+        if (!hasPermission) return;
+
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.5,
             });
 
-            if (!result.canceled) {
-                setProfileImage(result.assets[0].uri);
+            if (!result.canceled && result.assets?.[0]) {
+                setUploading(true);
+                const asset = result.assets[0];
+                const mimeType = asset.mimeType || 'image/jpeg';
+
+                if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+                    Alert.alert('Invalid Format', 'Please select a JPEG or PNG image.');
+                    return;
+                }
+
+                const uploadResult = await convertImageToBase64(asset.uri, mimeType);
+                setProfilePic(uploadResult.url);
             }
         } catch (error) {
             console.error('Error picking image:', error);
-            Alert.alert('Error', 'Failed to pick image. Please try again.');
-        }
-    };
-
-    // --- Upload image to Firebase Storage ---
-    const uploadImage = async (uri) => {
-        try {
-            setUploading(true);
-            
-            // Convert image to blob
-            const response = await fetch(uri);
-            const blob = await response.blob();
-            
-            // Create a reference to the file in Firebase Storage
-            const storageRef = ref(storage, `profileImages/${auth.currentUser.uid}`);
-            
-            // Upload the file
-            await uploadBytes(storageRef, blob);
-            
-            // Get the download URL
-            const downloadURL = await getDownloadURL(storageRef);
-            
-            return downloadURL;
-        } catch (error) {
-            console.error('Error uploading image:', error);
-            throw error;
+            Alert.alert(
+                'Processing Failed',
+                error.message || 'Failed to pick image. Please try again.',
+                [
+                    { text: 'OK', style: 'cancel' },
+                    { text: 'Retry', onPress: pickImage },
+                ]
+            );
         } finally {
             setUploading(false);
         }
     };
 
-    // --- Fetch Existing Profile Data ---
+    // Fetch existing profile data
     useEffect(() => {
         const fetchUserData = async () => {
             try {
-                // Attempt to sign in with the custom token if it exists
                 if (typeof __initial_auth_token !== 'undefined' && !auth.currentUser) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 }
 
                 const currentUser = auth.currentUser;
                 if (currentUser) {
-                    const userDocRef = doc(db, "users", currentUser.uid);
+                    const userDocRef = doc(db, 'user', currentUser.uid);
                     const docSnap = await getDoc(userDocRef);
 
                     if (docSnap.exists()) {
@@ -113,23 +186,15 @@ export default function CompleteProfileScreen() {
                         setName(userData.name || currentUser.displayName || '');
                         setPhoneNumber(userData.phoneNumber || '');
                         setGender(userData.gender || '');
-                        
-                        // Set profile image if available
-                        if (userData.profileImage) {
-                            setProfileImage(userData.profileImage);
-                        } else if (currentUser.photoURL) {
-                            setProfileImage(currentUser.photoURL);
-                        }
+                        setProfilePic(userData.profilePic || null);
                     } else {
                         setName(currentUser.displayName || '');
-                        if (currentUser.photoURL) {
-                            setProfileImage(currentUser.photoURL);
-                        }
+                        setProfilePic(null);
                     }
                 }
             } catch (error) {
-                console.error("Failed to fetch user data:", error);
-                Alert.alert("Error", "Could not load profile data. Please check your connection or try again later.");
+                console.error('Failed to fetch user data:', error);
+                Alert.alert('Error', 'Could not load profile data. Please try again.');
             } finally {
                 setLoading(false);
             }
@@ -138,53 +203,41 @@ export default function CompleteProfileScreen() {
         fetchUserData();
     }, []);
 
-    // --- Save Profile Data ---
+    // Save profile data
     const handleSaveProfile = async () => {
         const currentUser = auth.currentUser;
-        if (!currentUser) return;
-
-        if (!name.trim()) {
-            Alert.alert("Validation Error", "Please enter your full name.");
+        if (!currentUser) {
+            Alert.alert('Error', 'User not authenticated.');
             return;
         }
 
-        // Validate phone number (10 digits without country code)
+        if (!name.trim()) {
+            Alert.alert('Validation Error', 'Please enter your full name.');
+            return;
+        }
+
         if (phoneNumber && phoneNumber.length !== 10) {
-            Alert.alert("Validation Error", "Please enter a valid 10-digit phone number.");
+            Alert.alert('Validation Error', 'Please enter a valid 10-digit phone number.');
             return;
         }
 
         setSaving(true);
         try {
-            let profileImageUrl = profileImage;
-            
-            // Upload new image if it's a local URI (starts with file://)
-            if (profileImage && profileImage.startsWith('file://')) {
-                profileImageUrl = await uploadImage(profileImage);
-            }
-            
-            // Update Firebase Auth profile
-            await updateProfile(currentUser, { 
-                displayName: name,
-                photoURL: profileImageUrl 
-            });
-            
-            // Update Firestore document
-            const userDocRef = doc(db, "users", currentUser.uid);
+            const userDocRef = doc(db, 'user', currentUser.uid);
             await setDoc(userDocRef, {
                 name: name,
                 phoneNumber: phoneNumber,
                 gender: gender,
-                profileImage: profileImageUrl,
+                profilePic: profilePic,
                 email: currentUser.email,
-                updatedAt: new Date()
+                updatedAt: new Date(),
             }, { merge: true });
 
-            Alert.alert("Success", "Your profile has been updated.");
+            Alert.alert('Success', 'Your profile has been updated.');
             navigation.goBack();
         } catch (error) {
-            console.error("Profile update error:", error);
-            Alert.alert("Error", "Could not update your profile.");
+            console.error('Profile update error:', error);
+            Alert.alert('Error', 'Could not update your profile. Please try again.');
         } finally {
             setSaving(false);
         }
@@ -209,7 +262,7 @@ export default function CompleteProfileScreen() {
                 animationType="slide"
                 transparent={true}
                 visible={modalVisible}
-                onRequestClose={() => setModalVisible(!modalVisible)}
+                onRequestClose={() => setModalVisible(false)}
             >
                 <Pressable style={styles.centeredView} onPress={() => setModalVisible(false)}>
                     <View style={styles.modalView}>
@@ -245,22 +298,41 @@ export default function CompleteProfileScreen() {
 
                 {/* Profile Picture Section */}
                 <View style={styles.profileImageContainer}>
-                    {profileImage ? (
+                    {profilePic ? (
                         <Image 
-                            source={{ uri: profileImage }} 
+                            source={{ uri: profilePic }} 
                             style={styles.profileImage}
                         />
                     ) : (
                         <Icon name="account" size={80} color="#A68B69" />
                     )}
                     <TouchableOpacity style={styles.editIcon} onPress={pickImage} disabled={uploading}>
-                        {uploading ? (
+                        {uploading && uploadProgress > 0 && uploadProgress < 100 ? (
                             <ActivityIndicator size="small" color="#000" />
                         ) : (
                             <Icon name="pencil" size={16} color="#000" />
                         )}
                     </TouchableOpacity>
                 </View>
+                {uploading && uploadProgress > 0 && uploadProgress < 100 && (
+                    <View style={styles.uploadProgressContainer}>
+                        <View style={styles.uploadProgressHeader}>
+                            <Text style={styles.uploadProgressText}>Processing image... {uploadProgress}%</Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setUploadProgress(0);
+                                    setUploading(false);
+                                    Alert.alert('Processing Canceled', 'Image processing has been canceled.');
+                                }}
+                            >
+                                <Icon name="close" size={20} color="#6B7280" />
+                            </TouchableOpacity>
+                        </View>
+                        <View style={styles.progressBar}>
+                            <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+                        </View>
+                    </View>
+                )}
 
                 {/* Form Inputs */}
                 <View style={styles.formSection}>
@@ -287,8 +359,8 @@ export default function CompleteProfileScreen() {
                             placeholderTextColor="#999"
                             keyboardType="phone-pad"
                             value={phoneNumber}
-                            onChangeText={handlePhoneNumberChange} // Use the validation function
-                            maxLength={10} // Set max length to 10 digits
+                            onChangeText={handlePhoneNumberChange}
+                            maxLength={10}
                         />
                     </View>
                     {phoneNumber.length > 0 && phoneNumber.length < 10 && (
@@ -413,6 +485,41 @@ const styles = StyleSheet.create({
             },
         }),
     },
+    uploadProgressContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginBottom: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    uploadProgressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    uploadProgressText: {
+        fontSize: 14,
+        color: '#1F2937',
+        fontWeight: '500',
+    },
+    progressBar: {
+        height: 8,
+        backgroundColor: '#E5E7EB',
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#A68B69',
+        borderRadius: 4,
+    },
     formSection: {
         width: '100%',
         marginBottom: 40,
@@ -451,7 +558,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: '#fff',
         borderRadius: 12,
-        marginBottom: 8, // Reduced margin to make room for error text
+        marginBottom: 8,
         height: 45,
         ...Platform.select({
             ios: {
@@ -554,7 +661,6 @@ const styles = StyleSheet.create({
         marginLeft: 4,
         fontFamily: 'Montserrat_400Regular',
     },
-    // Modal styles
     centeredView: {
         flex: 1,
         justifyContent: 'center',

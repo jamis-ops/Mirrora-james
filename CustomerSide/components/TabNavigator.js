@@ -16,6 +16,14 @@ const Tab = createBottomTabNavigator();
 export default function TabNavigator() {
   const insets = useSafeAreaInsets(); // For safe area on devices with notches
 
+  // Optional: Log tab navigation changes for debugging
+  const onTabStateChange = (state) => {
+    if (state && state.routes && state.routes.length > 0) {
+      const currentTab = state.routes[state.index];
+      console.log("Tab Changed:", currentTab.name);
+    }
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -40,6 +48,7 @@ export default function TabNavigator() {
           backgroundColor: "#fff",
         },
       })}
+      onStateChange={onTabStateChange} // Optional debugging
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Categories" component={CategoryScreen} />

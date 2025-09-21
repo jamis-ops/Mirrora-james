@@ -10,7 +10,6 @@ import {
   FlatList,
   Dimensions,
   ScrollView,
-  TouchableWithoutFeedback,
   ActivityIndicator,
 } from "react-native";
 import { useNavigation, useIsFocused } from "@react-navigation/native";
@@ -26,10 +25,6 @@ import {
   getDoc,
   updateDoc,
   serverTimestamp,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
@@ -44,13 +39,14 @@ import {
   Montserrat_600SemiBold,
 } from "@expo-google-fonts/montserrat";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useChat } from '../context/ChatContext'; // Adjust path if needed
 
 const { width } = Dimensions.get("window");
 
-// ★ NEW: local placeholder (adjust path if needed)
+// Local placeholder (adjust path if needed)
 const PLACEHOLDER = require("../assets/placeholder.png");
 
-// ★ NEW: helper that guarantees a valid Image source or returns null
+// Helper that guarantees a valid Image source or returns null
 const safeImageSource = (src) => {
   if (typeof src === "number") return src;
   if (src && typeof src === "object" && typeof src.uri === "string" && src.uri.trim() !== "") {
@@ -66,12 +62,13 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const isFocused = useIsFocused();
 
+  const { unreadCount } = useChat();
+
   const [activeBanner, setActiveBanner] = useState(0);
   const [products, setProducts] = useState([]);
   const [banners, setBanners] = useState([]);
   const [tempClicked, setTempClicked] = useState({});
   const [isLoading, setIsLoading] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0); // NEW: Track unread messages
 
   // Load fonts
   const [leagueSpartanLoaded] = useLeagueSpartan({
@@ -81,45 +78,6 @@ export default function HomeScreen() {
     Montserrat_400Regular,
     Montserrat_600SemiBold,
   });
-
-  // NEW: Listen for new support messages
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // Listen for support chats where the user is a participant
-    const supportChatsQuery = query(
-      collection(db, "supportChats"),
-      where("participants", "array-contains", user.uid),
-      orderBy("lastUpdated", "desc")
-    );
-
-    const unsubscribe = onSnapshot(supportChatsQuery, (snapshot) => {
-      let count = 0;
-      
-      snapshot.forEach((doc) => {
-        const chatData = doc.data();
-        // Check if the user has unread messages in this chat
-        if (chatData.lastRead && chatData.lastRead[user.uid]) {
-          const lastRead = chatData.lastRead[user.uid].toDate();
-          const lastMessageTime = chatData.lastUpdated.toDate();
-          
-          if (lastMessageTime > lastRead) {
-            count++;
-          }
-        } else if (chatData.lastUpdated) {
-          // If user has never read this chat, count it as unread
-          count++;
-        }
-      });
-      
-      setUnreadCount(count);
-    }, (error) => {
-      console.error("Error listening for support chats:", error);
-    });
-
-    return () => unsubscribe();
-  }, [isFocused]);
 
   // Fetch banners
   useEffect(() => {
@@ -157,7 +115,7 @@ export default function HomeScreen() {
       }
     };
     fetchProducts();
-  }, []); // ✅ Removed selectedCategory from dependency array
+  }, []);
 
   // Add to wishlist
   const addToWishlist = async (product) => {
@@ -188,7 +146,7 @@ export default function HomeScreen() {
         }, 1000);
         Toast.show({
           type: "success",
-          text1: "💖 Added to Wishlist",
+          text1: "Added to Wishlist",
           text2: `${product.name} has been added!`,
           position: "top",
         });
@@ -233,7 +191,7 @@ export default function HomeScreen() {
         });
         Toast.show({
           type: "info",
-          text1: "🛒 Cart Updated",
+          text1: "Cart Updated",
           text2: `${product.name} quantity increased.`,
           position: "top",
         });
@@ -248,7 +206,7 @@ export default function HomeScreen() {
         });
         Toast.show({
           type: "success",
-          text1: "🛒 Added to Cart",
+          text1: "Added to Cart",
           text2: `${product.name} is now in your cart.`,
           position: "top",
         });
@@ -286,7 +244,7 @@ export default function HomeScreen() {
               style={styles.messageIconContainer}
             >
               <Icon name="chat-processing" size={24} color="#A68B69" />
-              {/* NEW: Notification badge */}
+              {/* Notification badge */}
               {unreadCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>
@@ -368,7 +326,6 @@ export default function HomeScreen() {
 
           {/* PRODUCTS */}
           <View style={styles.sectionHeader}>
-            {/* ✅ Replaced the dropdown button with a simple Text component */}
             <Text style={styles.sectionTitle}>Popular</Text>
             <TouchableOpacity
               onPress={() =>
@@ -462,7 +419,7 @@ const styles = StyleSheet.create({
     color: "#000",
   },
   messageIconContainer: {
-    position: "relative", // NEW: For positioning the badge
+    position: "relative",
   },
   badge: {
     position: "absolute",
@@ -470,7 +427,7 @@ const styles = StyleSheet.create({
     right: -5,
     backgroundColor: "red",
     borderRadius: 10,
-    minWidth: 18,
+    width: 18,
     height: 18,
     justifyContent: "center",
     alignItems: "center",
@@ -511,6 +468,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 5,
     elevation: 5,
+  },
+  bannerImageStyle: {
+    borderRadius: 15,
   },
   bannerContent: { width: "60%", padding: 10 },
   bannerText: { fontFamily: "LeagueSpartan_700Bold", fontSize: 18, color: "#000" },
@@ -574,23 +534,6 @@ const styles = StyleSheet.create({
   },
   productPrice: { fontFamily: "Montserrat_600SemiBold", fontSize: 14, color: "#A68B69" },
   addToCartButton: { backgroundColor: "#A68B69", padding: 8, borderRadius: 20 },
-  dropdownOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 },
-  dropdownContainer: {
-    position: "absolute",
-    top: 250,
-    left: 20,
-    width: 150,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 5,
-    paddingVertical: 5,
-  },
-  dropdownItem: { padding: 10 },
-  dropdownText: { fontFamily: "Montserrat_400Regular", fontSize: 16 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", height: 300 },
   loadingText: { marginTop: 10, fontFamily: "Montserrat_400Regular", color: "#A68B69" },
 });

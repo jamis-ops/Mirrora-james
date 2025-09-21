@@ -19,7 +19,7 @@ import {
   StyleSheet,
   Linking,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { db, auth, appId } from '../Backend/firebaseConfig.js';
@@ -41,6 +41,7 @@ const { width: screenWidth } = Dimensions.get('window');
 
 const ChatScreen = () => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [user, setUser] = useState(null);
@@ -162,6 +163,20 @@ const ChatScreen = () => {
       return () => unsubscribe();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (isFocused && user) {
+      const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${user.uid}`);
+      const updateLastRead = async () => {
+        try {
+          await setDoc(chatThreadRef, { userLastRead: serverTimestamp() }, { merge: true });
+        } catch (error) {
+          console.error('Error updating last read:', error);
+        }
+      };
+      updateLastRead();
+    }
+  }, [isFocused, user]);
 
   const requestPermissions = async () => {
     try {
