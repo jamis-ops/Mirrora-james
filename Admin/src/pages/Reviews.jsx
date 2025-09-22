@@ -18,6 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { db } from "../../Backend/firebaseConfig.js";
 import {
@@ -121,7 +123,7 @@ function Reviews() {
     });
 
     setFilteredReviews(results);
-    setCurrentPage(1);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [searchTerm, selectedRating, selectedProduct, reviews, sortBy]);
 
   const productOptions = [
@@ -211,8 +213,60 @@ function Reviews() {
   const paginatedReviews = filteredReviews.slice(startIndex, endIndex);
 
   const handlePageChange = (pageNumber) => {
+    if (pageNumber < 1) pageNumber = 1;
+    if (pageNumber > pageCount) pageNumber = pageCount;
     setCurrentPage(pageNumber);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Generate page numbers for pagination
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+    
+    if (pageCount <= maxVisiblePages) {
+      // Show all pages if total pages is less than max visible
+      for (let i = 1; i <= pageCount; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Always include first page
+      pages.push(1);
+      
+      // Calculate start and end of visible page range
+      let startPage = Math.max(2, currentPage - 1);
+      let endPage = Math.min(pageCount - 1, currentPage + 1);
+      
+      // Adjust if we're near the beginning
+      if (currentPage <= 3) {
+        endPage = 4;
+      }
+      
+      // Adjust if we're near the end
+      if (currentPage >= pageCount - 2) {
+        startPage = pageCount - 3;
+      }
+      
+      // Add ellipsis after first page if needed
+      if (startPage > 2) {
+        pages.push("...");
+      }
+      
+      // Add middle pages
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+      
+      // Add ellipsis before last page if needed
+      if (endPage < pageCount - 1) {
+        pages.push("...");
+      }
+      
+      // Always include last page
+      pages.push(pageCount);
+    }
+    
+    return pages;
   };
 
   if (loading) {
@@ -223,7 +277,6 @@ function Reviews() {
             <RefreshCw size={28} className="animate-spin text-white" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Reviews</h3>
-          <p className="text-gray-600">Please wait while we fetch your customer feedback...</p>
         </div>
       </div>
     );
@@ -441,6 +494,15 @@ function Reviews() {
 
         {/* Reviews List */}
         <div>
+          {/* Page Info */}
+          {totalReviews > 0 && (
+            <div className="text-center mb-6">
+              <span className="text-[#A68B69] font-medium bg-[#F5F2EF] px-4 py-2 rounded-full">
+                Showing {startIndex + 1}-{Math.min(endIndex, totalReviews)} of {totalReviews} reviews
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {paginatedReviews.map((review) => (
               <div
@@ -534,8 +596,17 @@ function Reviews() {
           </div>
 
           {/* Pagination Controls */}
-          {totalReviews > REVIEWS_PER_PAGE && (
+          {pageCount > 1 && (
             <div className="flex justify-center items-center mt-8 space-x-2">
+              <button
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all font-medium"
+                title="First Page"
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
@@ -545,32 +616,25 @@ function Reviews() {
                 Previous
               </button>
               
-              {Array.from({ length: Math.min(5, pageCount) }).map((_, index) => {
-                let pageNumber;
-                if (pageCount <= 5) {
-                  pageNumber = index + 1;
-                } else if (currentPage <= 3) {
-                  pageNumber = index + 1;
-                } else if (currentPage >= pageCount - 2) {
-                  pageNumber = pageCount - 4 + index;
-                } else {
-                  pageNumber = currentPage - 2 + index;
-                }
-                
-                return (
+              {getPageNumbers().map((page, index) => (
+                page === "..." ? (
+                  <span key={`ellipsis-${index}`} className="px-2 text-[#CAC8C5]">
+                    ...
+                  </span>
+                ) : (
                   <button
-                    key={pageNumber}
-                    onClick={() => handlePageChange(pageNumber)}
+                    key={page}
+                    onClick={() => handlePageChange(page)}
                     className={`px-3 py-2 rounded-lg transition-all font-medium ${
-                      currentPage === pageNumber
+                      currentPage === page
                         ? "bg-[#A68B69] text-white"
                         : "bg-white border border-[#E6E6E6] text-[#A68B69] hover:bg-[#F9F9F9]"
                     }`}
                   >
-                    {pageNumber}
+                    {page}
                   </button>
-                );
-              })}
+                )
+              ))}
               
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
@@ -580,15 +644,15 @@ function Reviews() {
                 Next
                 <ChevronRight size={16} />
               </button>
-            </div>
-          )}
-
-          {/* Page Info */}
-          {totalReviews > REVIEWS_PER_PAGE && (
-            <div className="text-center mt-4">
-              <span className="text-[#CAC8C5] font-medium">
-                Showing {startIndex + 1}-{Math.min(endIndex, totalReviews)} of {totalReviews} reviews
-              </span>
+              
+              <button
+                onClick={() => handlePageChange(pageCount)}
+                disabled={currentPage === pageCount}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-white border border-[#E6E6E6] text-[#A68B69] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#F9F9F9] transition-all font-medium"
+                title="Last Page"
+              >
+                <ChevronsRight size={16} />
+              </button>
             </div>
           )}
         </div>

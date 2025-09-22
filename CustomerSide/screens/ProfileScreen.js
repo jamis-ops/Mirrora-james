@@ -8,18 +8,21 @@ import {
     Image, 
     Modal, 
     ActivityIndicator, 
-    Platform 
+    Platform,
+    Alert,
+    Linking
 } from 'react-native';
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
+import * as ImagePicker from 'expo-image-picker';
+import BottomNavigationBar from '../components/BottomNavigationBar';
 
 // --- Firebase Imports ---
 import { auth, db } from '../Backend/firebaseConfig';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import TabNavigator from './../components/TabNavigator';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 export default function ProfileScreen() {
     const navigation = useNavigation();
@@ -27,12 +30,144 @@ export default function ProfileScreen() {
     const [showLogoutModal, setShowLogoutModal] = useState(false);
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
+    const [profilePic, setProfilePic] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
-    const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold, });
+    const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
 
-    // This useEffect hook fetches user data from Firebase every time the screen is focused.
+    // Request permission for image picker
+    const requestPermissions = async () => {
+        try {
+            const { status: mediaLibraryStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+
+            if (mediaLibraryStatus !== 'granted' || cameraStatus !== 'granted') {
+                Alert.alert(
+                    'Permissions Required',
+                    'Camera and photo library permissions are needed to upload images. Please enable them in settings.',
+                    [
+                        { text: 'OK', style: 'cancel' },
+                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                    ]
+                );
+                return false;
+            }
+            return true;
+        } catch (error) {
+            console.error('Permission request error:', error);
+            Alert.alert('Error', 'Failed to request permissions. Please try again.');
+            return false;
+        }
+    };
+
+    // Convert image to base64 (adapted from ChatScreen.js)
+    const convertImageToBase64 = async (fileUri, mimeType) => {
+        if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+            throw new Error('Only JPEG and PNG images are supported.');
+        }
+
+        setUploadProgress(0);
+        console.log('🔄 Converting image to base64:', { fileUri, mimeType });
+
+        try {
+            const response = await fetch(fileUri);
+            const blob = await response.blob();
+
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64String = reader.result;
+                    const dataUrl = `data:${mimeType};base64,${base64String.split(',')[1]}`;
+                    
+                    const base64Length = base64String.length;
+                    const estimatedSize = (base64Length * 0.75);
+                    
+                    if (estimatedSize > 900000) {
+                        reject(new Error('Image is too large. Please select a smaller image (under 900 KB).'));
+                        return;
+                    }
+
+                    setUploadProgress(100);
+                    setTimeout(() => setUploadProgress(0), 500);
+                    resolve({
+                        url: dataUrl,
+                        type: 'image',
+                        mimeType,
+                    });
+                };
+                reader.onerror = () => {
+                    console.error('❌ Failed to convert image to base64');
+                    setUploadProgress(0);
+                    reject(new Error('Failed to convert image to base64. Please try again.'));
+                };
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('❌ Image processing failed:', error);
+            setUploadProgress(0);
+            throw error;
+        }
+    };
+
+    // Handle image upload
+    const handleImageUpload = async () => {
+        if (uploading) {
+            Alert.alert('Processing in Progress', 'Please wait for the current operation to complete.');
+            return;
+        }
+
+        const hasPermission = await requestPermissions();
+        if (!hasPermission) return;
+
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.5,
+            });
+
+            if (!result.canceled && result.assets?.[0]) {
+                setUploading(true);
+                const asset = result.assets[0];
+                const fileName = asset.fileName || `profile_${Date.now()}.jpg`;
+                const mimeType = asset.mimeType || 'image/jpeg';
+
+                if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mimeType)) {
+                    Alert.alert('Invalid Format', 'Please select a JPEG or PNG image.');
+                    return;
+                }
+
+                const uploadResult = await convertImageToBase64(asset.uri, mimeType);
+
+                // Update user document in Firestore
+                const userDocRef = doc(db, "user", auth.currentUser.uid);
+                await updateDoc(userDocRef, {
+                    profilePic: uploadResult.url,
+                    updatedAt: new Date(),
+                });
+
+                setProfilePic(uploadResult.url);
+            }
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            Alert.alert(
+                'Processing Failed',
+                error.message || 'Failed to upload image. Please try again.',
+                [
+                    { text: 'OK', style: 'cancel' },
+                    { text: 'Retry', onPress: handleImageUpload },
+                ]
+            );
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    // Fetch user data from Firebase
     useEffect(() => {
         const fetchUserData = async () => {
             setLoading(true);
@@ -40,18 +175,25 @@ export default function ProfileScreen() {
                 const currentUser = auth.currentUser;
                 if (currentUser) {
                     setEmail(currentUser.email);
-                    const userDocRef = doc(db, "users", currentUser.uid);
+                    const userDocRef = doc(db, "user", currentUser.uid);
                     const docSnap = await getDoc(userDocRef);
 
                     if (docSnap.exists()) {
                         const userData = docSnap.data();
                         setName(userData.name || currentUser.displayName || 'No name set');
+                        setProfilePic(userData.profilePic || null);
                     } else {
                         setName(currentUser.displayName || 'No name set');
+                        setProfilePic(null);
                     }
                 }
             } catch (error) {
                 console.error("Failed to fetch user data for profile:", error);
+                if (error.code === 'permission-denied') {
+                    Alert.alert('Permission Error', 'Unable to access user data due to Firestore permissions.');
+                } else {
+                    Alert.alert('Error', 'Failed to fetch user data. Please try again.');
+                }
             } finally {
                 setLoading(false);
             }
@@ -61,6 +203,27 @@ export default function ProfileScreen() {
             fetchUserData();
         }
     }, [isFocused]);
+
+    // Function to open address in maps
+    const openAddressInMaps = () => {
+        const address = 'Brgy. Bulacao, Cebu City, Philippines';
+        const encodedAddress = encodeURIComponent(address);
+        
+        // Try to open with Google Maps first, then fall back to Apple Maps
+        const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
+        const appleMapsUrl = `http://maps.apple.com/?q=${encodedAddress}`;
+        
+        Linking.canOpenURL(googleMapsUrl).then(supported => {
+            if (supported) {
+                Linking.openURL(googleMapsUrl);
+            } else {
+                Linking.openURL(appleMapsUrl);
+            }
+        }).catch(err => {
+            Alert.alert('Error', 'Could not open maps application');
+            console.error('Error opening maps:', err);
+        });
+    };
 
     if (!leagueSpartanLoaded || !montserratLoaded) {
         return null;
@@ -73,15 +236,21 @@ export default function ProfileScreen() {
             navigation.navigate('SignIn');
         } catch (error) {
             console.error('Sign out error', error);
+            Alert.alert('Error', 'Failed to sign out. Please try again.');
         }
     };
 
+    // Fixed navigation function
     const handleNavigation = (screenName) => {
-        const parentNav = navigation.getParent();
-        if (parentNav) {
-            parentNav.navigate(screenName);
-        } else {
-            console.warn("Parent navigator not found!");
+        try {
+            // Try to use the current navigation first
+            navigation.navigate(screenName);
+        } catch (error) {
+            console.error(`Navigation to ${screenName} failed:`, error);
+            Alert.alert(
+                'Navigation Error',
+                `Cannot navigate to ${screenName}. Please make sure the screen is properly configured.`
+            );
         }
     };
 
@@ -112,11 +281,40 @@ export default function ProfileScreen() {
             <ScrollView contentContainerStyle={styles.contentContainer}>
                 {/* User Info Section */}
                 <View style={styles.userInfoSection}>
-                    <Image source={require('../assets/profile.png')} style={styles.avatar} />
+                    <TouchableOpacity onPress={handleImageUpload} disabled={uploading}>
+                        <View style={styles.avatarContainer}>
+                            {profilePic ? (
+                                <Image source={{ uri: profilePic }} style={styles.avatar} />
+                            ) : (
+                                <Image source={require('../assets/profile.png')} style={styles.avatar} />
+                            )}
+                            <View style={styles.uploadIcon}>
+                                <Icon name="camera" size={20} color="#fff" />
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                    {uploading && uploadProgress > 0 && uploadProgress < 100 && (
+                        <View style={styles.uploadProgressContainer}>
+                            <View style={styles.uploadProgressHeader}>
+                                <Text style={styles.uploadProgressText}>Processing image... {uploadProgress}%</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setUploadProgress(0);
+                                        setUploading(false);
+                                        Alert.alert('Processing Canceled', 'Image processing has been canceled.');
+                                    }}
+                                >
+                                    <Icon name="close" size={20} color="#6B7280" />
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.progressBar}>
+                                <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+                            </View>
+                        </View>
+                    )}
                     <Text style={[styles.userName, loading && styles.skeletonName]}>
                         {loading ? ' ' : name}
                     </Text>
-                    {/* The user's email is now correctly displayed here */}
                     <Text style={[styles.userHandle, loading && styles.skeletonEmail]}>
                         {loading ? ' ' : email}
                     </Text>
@@ -139,15 +337,25 @@ export default function ProfileScreen() {
                         title="Address"
                         onPress={() => handleNavigation('MyAddressScreen')}
                     />
+                    
+                    {/* About Us Section - Added before Settings */}
+                    <TouchableOpacity 
+                        style={[styles.menuItem, styles.aboutUsItem]} 
+                        onPress={() => handleNavigation('AboutUsScreen')}
+                    >
+                        <View style={styles.menuItemLeft}>
+                            <View style={styles.iconCircle}>
+                                <Icon name="information-outline" size={24} color="#A68B69" />
+                            </View>
+                            <Text style={styles.menuItemText}>About Us</Text>
+                        </View>
+                        <Icon name="chevron-right" size={24} color="#777" />
+                    </TouchableOpacity>
+                    
                     <MenuItem
                         icon="cog-outline"
                         title="Setting"
                         onPress={() => handleNavigation('SettingScreen')}
-                    />
-                    <MenuItem
-                        icon="information-outline"
-                        title="About Us"
-                        onPress={() => handleNavigation('AboutUsScreen')}
                         isLast={true}
                     />
                 </View>
@@ -188,7 +396,7 @@ export default function ProfileScreen() {
             </Modal>
 
             {/* Bottom Navigation Bar */}
-            <TabNavigator navigation={navigation} currentScreen="Profile" />
+            <BottomNavigationBar navigation={navigation} currentScreen="account" />
         </View>
     );
 }
@@ -223,11 +431,60 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 30,
     },
+    avatarContainer: {
+        position: 'relative',
+    },
     avatar: {
         width: 120,
         height: 120,
         borderRadius: 60,
         marginBottom: 10,
+    },
+    uploadIcon: {
+        position: 'absolute',
+        bottom: 10,
+        right: 0,
+        backgroundColor: '#A68B69',
+        borderRadius: 15,
+        width: 30,
+        height: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    uploadProgressContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginBottom: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    uploadProgressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    uploadProgressText: {
+        fontSize: 14,
+        color: '#1F2937',
+        fontWeight: '500',
+    },
+    progressBar: {
+        height: 8,
+        backgroundColor: '#E5E7EB',
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#A68B69',
+        borderRadius: 4,
     },
     userName: {
         fontFamily: 'Montserrat_600SemiBold',
@@ -273,6 +530,9 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#eee',
     },
+    aboutUsItem: {
+        // Additional styling if needed for About Us item
+    },
     lastMenuItem: {
         borderBottomWidth: 0,
     },
@@ -293,6 +553,57 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#000',
         marginLeft: 15,
+    },
+    addressSection: {
+        width: '100%',
+        marginBottom: 20,
+    },
+    sectionTitle: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 18,
+        color: '#000',
+        marginBottom: 12,
+        marginLeft: 5,
+    },
+    addressCard: {
+        flexDirection: 'row',
+        backgroundColor: '#fff',
+        borderRadius: 15,
+        padding: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    addressIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#F3EFE9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 15,
+    },
+    addressTextContainer: {
+        flex: 1,
+    },
+    addressTitle: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 16,
+        color: '#000',
+        marginBottom: 4,
+    },
+    addressText: {
+        fontFamily: 'Montserrat_400Regular',
+        fontSize: 14,
+        color: '#555',
+        marginBottom: 6,
+    },
+    addressLink: {
+        fontFamily: 'Montserrat_600SemiBold',
+        fontSize: 12,
+        color: '#A68B69',
     },
     logoutButton: {
         width: "100%",
@@ -373,4 +684,4 @@ const styles = StyleSheet.create({
         color: 'white',
         textAlign: 'center',
     },
-}); 
+});

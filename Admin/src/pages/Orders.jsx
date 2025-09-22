@@ -218,7 +218,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-[#A68B69] rounded-xl flex items-center justify-center shadow-lg">
-                                <Package className="w-6 h-6 text-white" />
+                                 className="w-6 h-6 text-white" />
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>

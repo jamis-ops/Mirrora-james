@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { StyleSheet, Platform, StatusBar, View, TouchableOpacity } from "react-native";
 import Toast, { BaseToast } from "react-native-toast-message";
-import { StyleSheet, Platform, StatusBar } from "react-native";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../Backend/firebaseConfig";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 
 // Import screens
 import SplashScreen from "../screens/SplashScreen";
@@ -12,9 +15,8 @@ import CreateAccountScreen from "../screens/CreateAccountScreen";
 import CompleteProfileScreen from "../screens/CompleteProfileScreen";
 import ProductScreen from "../screens/ProductScreen";
 import MessageScreen from "../screens/MessageScreen";
-import ChatScreen from "../screens/ChatScreen"; // New chat screen
+import ChatScreen from "../screens/ChatScreen";
 import HelpAndSupportScreen from "../screens/HelpAndSupportScreen";
-import HelpDetailScreen from "../screens/HelpDetailScreen";         // New help detail screen
 import CustomizationScreen from "../screens/CustomizationScreen";
 import ProductListScreen from "../screens/ProductListScreen";
 import ChatbotScreen from "../screens/ChatbotScreen";
@@ -23,14 +25,16 @@ import OrderConfirmationScreen from "../screens/OrderConfirmationScreen";
 import MyOrderScreen from "../screens/MyOrderScreen";
 import SettingScreen from "../screens/SettingScreen";
 import VerifyEmailScreen from "../screens/VerifyEmailScreen";
-import MyAddressScreen from "../screens/MyAddressScreen";
-import WishlistScreen from "../screens/WishlistScreen";
+import CustomOrderCheckoutScreen from "../screens/CustomOrderCheckoutScreen";
+import ReviewScreen from "../screens/ReviewScreen";
 
 // Import TabNavigator
 import TabNavigator from "../components/TabNavigator";
-import ReviewScreen from "../screens/ReviewScreen";
-import AboutUsScreen from "../screens/AboutUsScreen";
 
+// Import FloatingChatbot
+import FloatingChatbot from "../components/FloatingChatbot";
+import AboutUsScreen from "../screens/AboutUsScreen";
+import MyAddressScreen from "../screens/MyAddressScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -63,51 +67,219 @@ const toastConfig = {
 };
 
 export default function StackNavigator() {
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentRouteName, setCurrentRouteName] = useState("");
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log("Auth State Changed:", {
+        user: !!currentUser,
+        uid: currentUser?.uid || "No UID",
+        email: currentUser?.email || "No email",
+      });
+      setUser(currentUser);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Function to handle navigation state changes
+  const onNavigationStateChange = (state) => {
+    if (state && state.routes && state.routes.length > 0) {
+      const currentRoute = state.routes[state.index];
+      let routeName = currentRoute.name;
+
+      // Handle nested routes (e.g., within TabNavigator)
+      if (currentRoute.state && currentRoute.state.routes && currentRoute.state.routes.length > 0) {
+        const nestedRoute = currentRoute.state.routes[currentRoute.state.index];
+        routeName = nestedRoute.name;
+      }
+
+      setCurrentRouteName(routeName);
+
+      console.log("Navigation State Changed:", {
+        topLevelRoute: currentRoute.name,
+        currentRouteName: routeName,
+        isNested: !!currentRoute.state,
+      });
+    } else {
+      console.log("Navigation State Changed: No valid state");
+    }
+  };
+
+  // Define screens where FloatingChatbot should be hidden
+  const hiddenScreens = [
+    "Splash",
+    "Onboarding",
+    "Welcome",
+    "SignIn",
+    "CreateAccount",
+    "CompleteProfile",
+    "VerifyEmail",
+    "MessageScreen",
+    "ChatScreen",
+    "ChatbotScreen",
+  ];
+
+  // Show FloatingChatbot only when not loading and not on hidden screens
+  const shouldShowFloatingChatbot = !isLoading && !hiddenScreens.includes(currentRouteName);
+
+  if (isLoading) {
+    console.log("Rendering null due to isLoading=true");
+    return null;
+  }
+
   return (
-    <>
-      <Stack.Navigator 
-        initialRouteName="Splash" 
-        screenOptions={{ headerShown: false }}
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator
+        initialRouteName="Splash"
+        screenOptions={({ navigation }) => ({
+          headerStyle: {
+            backgroundColor: '#A67B5B',
+          },
+          headerTintColor: '#fff',
+          headerTitleStyle: {
+            fontFamily: 'LeagueSpartan_700Bold',
+            fontSize: 20,
+          },
+          headerShadowVisible: true,
+          headerBackVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+              activeOpacity={0.7}
+            >
+              <Icon name="arrow-left" size={24} color="#fff" />
+            </TouchableOpacity>
+          ),
+        })}
       >
         {/* Authentication Screens */}
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-        <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        <Stack.Screen name="SignIn" component={SignInScreen} />
-        <Stack.Screen name="CreateAccount" component={CreateAccountScreen} />
-        <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
-        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+        <Stack.Screen name="Splash" component={SplashScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="CreateAccount" component={CreateAccountScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} options={{ headerShown: false }} />
 
         {/* Main App Screens */}
-        <Stack.Screen name="Home" component={TabNavigator} />
-        
+        <Stack.Screen name="Home" component={TabNavigator} options={{ headerShown: false }} />
+
         {/* Product Related Screens */}
-        <Stack.Screen name="ProductScreen" component={ProductScreen} />
-        <Stack.Screen name="ProductListScreen" component={ProductListScreen} />
-        <Stack.Screen name="CustomizationScreen" component={CustomizationScreen} />
-        
+        <Stack.Screen
+          name="ProductScreen"
+          component={ProductScreen}
+          options={{ title: 'Product Details' }}
+        />
+        <Stack.Screen
+          name="ProductListScreen"
+          component={ProductListScreen}
+          options={({ route }) => ({
+            title: route.params?.category || 'Products',
+          })}
+        />
+        <Stack.Screen
+          name="CustomizationScreen"
+          component={CustomizationScreen}
+          options={{ title: 'Customize Your Mirror' }}
+        />
+
         {/* Order Related Screens */}
-        <Stack.Screen name="CheckoutScreen" component={CheckoutScreen} />
-        <Stack.Screen name="OrderConfirmationScreen" component={OrderConfirmationScreen} />
-        <Stack.Screen name="MyOrderScreen" component={MyOrderScreen} />
-        <Stack.Screen name="ReviewScreen" component={ReviewScreen} />
-        
+        <Stack.Screen
+          name="CheckoutScreen"
+          component={CheckoutScreen}
+          options={{ title: 'Checkout' }}
+        />
+        <Stack.Screen
+          name="OrderConfirmationScreen"
+          component={OrderConfirmationScreen}
+          options={{ title: 'Order Confirmation' }}
+        />
+        <Stack.Screen
+          name="MyOrderScreen"
+          component={MyOrderScreen}
+          options={{ title: 'My Orders' }}
+        />
+        <Stack.Screen
+          name="ReviewScreen"
+          component={ReviewScreen}
+          options={{ title: 'Write a Review' }}
+        />
+
         {/* Message/Chat Related Screens */}
-        <Stack.Screen name="MessageScreen" component={MessageScreen} />
-        <Stack.Screen name="ChatScreen" component={ChatScreen} />
-        <Stack.Screen name="ChatbotScreen" component={ChatbotScreen} />
-        
-        {/* Help & Support Related Screens */}
-        <Stack.Screen name="HelpAndSupportScreen" component={HelpAndSupportScreen} />
-        <Stack.Screen name="HelpDetailScreen" component={HelpDetailScreen} />
-        
+        <Stack.Screen
+          name="MessageScreen"
+          component={MessageScreen}
+          options={{
+            title: 'Messages',
+            headerLeft: null,
+            headerStyle: {
+              backgroundColor: '#A67B5B',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 4,
+              elevation: 4,
+            },
+          }}
+        />
+        <Stack.Screen
+          name="ChatScreen"
+          component={ChatScreen}
+          options={{
+            title: 'Mirrora Support',
+            headerLeft: null,
+            headerStyle: {
+              backgroundColor: '#A67B5B',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 6,
+            },
+          }}
+        />
+        <Stack.Screen
+          name="ChatbotScreen"
+          component={ChatbotScreen}
+          options={{ title: 'Chatbot Assistant' }}
+        />
+        <Stack.Screen
+          name="CustomOrderCheckoutScreen"
+          component={CustomOrderCheckoutScreen}
+          options={{ title: 'Custom Order Checkout' }}
+        />
+
         {/* Other Screens */}
-        <Stack.Screen name="SettingScreen" component={SettingScreen} />
-        <Stack.Screen name="MyAddressScreen" component={MyAddressScreen} />
-        <Stack.Screen name="Wishlist" component={WishlistScreen} />
-         <Stack.Screen name="AboutUsScreen" component={AboutUsScreen} />
-        
+        <Stack.Screen
+          name="HelpAndSupportScreen"
+          component={HelpAndSupportScreen}
+          options={{ title: 'Help & Support' }}
+        />
+        <Stack.Screen
+          name="SettingScreen"
+          component={SettingScreen}
+          options={{ title: 'Settings' }}
+        />
+         <Stack.Screen
+          name="AboutUsScreen"
+          component={AboutUsScreen}
+          options={{ title: 'AboutUsScreen' }}
+        />
+          <Stack.Screen
+            name="MyAddressScreen"
+            component={MyAddressScreen}
+            options={{ title: 'My Address' }}
+          />
+
       </Stack.Navigator>
+
+      {/* Floating Chatbot */}
+      {shouldShowFloatingChatbot && <FloatingChatbot />}
 
       <Toast
         config={toastConfig}
@@ -115,12 +287,16 @@ export default function StackNavigator() {
         topOffset={Platform.OS === "android" ? StatusBar.currentHeight + 10 : 50}
         visibilityTime={2500}
       />
-    </>
+    </View>
   );
 }
 
-// Toast styles with Mirrora theme
 const styles = StyleSheet.create({
+  backButton: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
   toastContainer: {
     borderLeftWidth: 6,
     backgroundColor: "#fff",
@@ -137,9 +313,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "bold",
     color: "#2C1810",
+    fontFamily: 'Montserrat_600SemiBold',
   },
   toastMessage: {
     fontSize: 13,
     color: "#6B7280",
-  },  
+    fontFamily: 'Montserrat_400Regular',
+  },
 });

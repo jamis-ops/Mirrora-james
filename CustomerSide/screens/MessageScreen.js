@@ -1,5 +1,5 @@
-// screens/MessageScreen.js - Complete and corrected version with functional help section
-import React, { useState } from 'react';
+// screens/MessageScreen.js - Modified version with notification system
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,32 +9,147 @@ import {
   ScrollView,
   StatusBar,
   Platform,
+  Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+
+// Configure notifications
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 const MessageScreen = () => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const [activeTab, setActiveTab] = useState('Support');
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [lastMessage, setLastMessage] = useState('');
+  const [expoPushToken, setExpoPushToken] = useState('');
+
+  // Simulate receiving a message from admin (in a real app, this would come from your backend)
+  useEffect(() => {
+    // Check for new messages when screen is focused
+    if (isFocused) {
+      checkForNewMessages();
+    }
+    
+    // Set up a simulated message receiver (in a real app, use WebSockets or push notifications)
+    const messageInterval = setInterval(() => {
+      // 20% chance of receiving a simulated message every 30 seconds
+      if (Math.random() < 0.2) {
+        simulateAdminMessage();
+      }
+    }, 30000);
+
+    return () => clearInterval(messageInterval);
+  }, [isFocused]);
+
+  // Request notification permissions
+  useEffect(() => {
+    registerForPushNotificationsAsync().then(token => {
+      if (token) setExpoPushToken(token);
+    });
+
+    // Listen for incoming notifications
+    const subscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log('Notification received:', notification);
+      setHasUnreadMessages(true);
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  const registerForPushNotificationsAsync = async () => {
+    let token;
+    if (Device.isDevice) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        alert('Failed to get push token for push notification!');
+        return;
+      }
+      token = (await Notifications.getExpoPushTokenAsync()).data;
+    } else {
+      alert('Must use physical device for Push Notifications');
+    }
+
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+
+    return token;
+  };
+
+  const checkForNewMessages = async () => {
+    // In a real app, this would check your backend for new messages
+    // For simulation, we'll use a random chance
+    const hasNewMessages = Math.random() < 0.3;
+    if (hasNewMessages) {
+      setHasUnreadMessages(true);
+      setLastMessage('We have a special offer for you!');
+      
+      // Show local notification
+      await schedulePushNotification();
+    } else {
+      setHasUnreadMessages(false);
+    }
+  };
+
+  const schedulePushNotification = async () => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "New message from Mirrora Philippines",
+        body: "You have a new message from our support team",
+        data: { data: 'goes here' },
+      },
+      trigger: { seconds: 1 },
+    });
+  };
+
+  const simulateAdminMessage = () => {
+    const messages = [
+      "Hello! We have a new collection available.",
+      "Your order status has been updated.",
+      "Special discount just for you!",
+      "We noticed you were browsing our mirrors - need help?",
+      "Thank you for being a valued customer!"
+    ];
+    
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    setHasUnreadMessages(true);
+    setLastMessage(randomMessage);
+    
+    // Show notification
+    schedulePushNotification();
+    
+    // Alert for demo purposes (wouldn't use in production)
+    Alert.alert(
+      "New Message",
+      `You have a new message from Mirrora Philippines: "${randomMessage}"`,
+      [{ text: "OK", onPress: () => console.log("OK Pressed") }]
+    );
+  };
 
   const handleSupportChat = () => {
+    // Reset unread messages when user opens chat
+    setHasUnreadMessages(false);
     navigation.navigate('ChatScreen');
-  };
-
-  const handleChatbotPress = () => {
-    navigation.navigate('ChatbotScreen');
-  };
-
-  const handleHelpPress = (type) => {
-    // Navigate to help sections with specific section data
-    console.log(`Help pressed: ${type}`);
-    navigation.navigate('HelpDetailScreen', { section: type });
-  };
-
-  const handleFaqPress = (question) => {
-    // Navigate to FAQ with specific question
-    console.log(`FAQ pressed: ${question}`);
-    navigation.navigate('HelpDetailScreen', { faq: question });
   };
 
   return (
@@ -60,20 +175,6 @@ const MessageScreen = () => {
 
         {/* Tab Container */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={styles.tab} 
-            onPress={() => setActiveTab('Chatbot')}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.tabText, 
-              activeTab === 'Chatbot' && styles.activeTabText
-            ]}>
-              AI Assistant
-            </Text>
-            {activeTab === 'Chatbot' && <View style={styles.activeTabUnderline} />}
-          </TouchableOpacity>
-          
           <TouchableOpacity 
             style={styles.tab} 
             onPress={() => setActiveTab('Support')}
@@ -106,154 +207,35 @@ const MessageScreen = () => {
                   <Icon name="account-tie" size={28} color="#FFFFFF" />
                 </View>
                 <View style={styles.onlineIndicator} />
+                {hasUnreadMessages && <View style={styles.notificationBadge} />}
               </View>
               
               <View style={styles.messageContent}>
                 <View style={styles.messageHeader}>
-                  <Text style={styles.senderName}>Mirrora Support</Text>
+                  <Text style={styles.senderName}>Mirrora Philippines</Text>
                   <View style={styles.onlineStatus}>
                     <View style={styles.onlineDot} />
                     <Text style={styles.onlineText}>Online</Text>
                   </View>
                 </View>
-                <Text style={styles.messagePreview}>
-                  Hi! How can we help you today? Ask us about orders, products, or any questions you have.
-                </Text>
-                <Text style={styles.timeStamp}>Available now</Text>
-              </View>
-              
-              <Icon name="chevron-right" size={20} color="#A67B5B" />
-            </TouchableOpacity>
-          )}
-          
-          {activeTab === 'Chatbot' && (
-            <TouchableOpacity 
-              style={styles.messageCard} 
-              onPress={handleChatbotPress}
-              activeOpacity={0.8}
-            >
-              <View style={styles.avatarContainer}>
-                <View style={styles.chatbotAvatar}>
-                  <Icon name="robot" size={28} color="#FFFFFF" />
-                </View>
-                <View style={styles.onlineIndicator} />
-              </View>
-              
-              <View style={styles.messageContent}>
-                <View style={styles.messageHeader}>
-                  <Text style={styles.senderName}>Mirrora AI</Text>
-                  <View style={styles.onlineStatus}>
-                    <View style={styles.onlineDot} />
-                    <Text style={styles.onlineText}>Always Online</Text>
+                
+                {hasUnreadMessages && lastMessage ? (
+                  <View style={styles.unreadMessageContainer}>
+                    <Text style={styles.unreadMessageText} numberOfLines={1}>
+                      {lastMessage}
+                    </Text>
+                    <View style={styles.unreadIndicator} />
                   </View>
-                </View>
-                <Text style={styles.messagePreview}>
-                  Hello! I'm your AI assistant. I can help you find the perfect mirror, answer questions, and provide recommendations.
-                </Text>
-                <Text style={styles.timeStamp}>Available 24/7</Text>
+                ) : (
+                  <Text style={styles.messagePreview}>
+                    Send us a message for any inquiries
+                  </Text>
+                )}
               </View>
               
               <Icon name="chevron-right" size={20} color="#A67B5B" />
             </TouchableOpacity>
           )}
-
-          {/* Help Section */}
-          <View style={styles.helpSection}>
-            <Text style={styles.helpTitle}>How can we help?</Text>
-            <Text style={styles.helpSubtitle}>Quick access to common topics</Text>
-            <View style={styles.helpGrid}>
-              <TouchableOpacity 
-                style={styles.helpItem}
-                onPress={() => handleHelpPress('orders')}
-                activeOpacity={0.7}
-              >
-                <Icon name="package-variant" size={24} color="#A67B5B" />
-                <Text style={styles.helpText}>Order Status</Text>
-                <Text style={styles.helpSubText}>Track your orders</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.helpItem}
-                onPress={() => handleHelpPress('shipping')}
-                activeOpacity={0.7}
-              >
-                <Icon name="truck-delivery" size={24} color="#A67B5B" />
-                <Text style={styles.helpText}>Shipping Info</Text>
-                <Text style={styles.helpSubText}>Delivery details</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.helpItem}
-                onPress={() => handleHelpPress('payment')}
-                activeOpacity={0.7}
-              >
-                <Icon name="credit-card" size={24} color="#A67B5B" />
-                <Text style={styles.helpText}>Payment</Text>
-                <Text style={styles.helpSubText}>Billing questions</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.helpItem}
-                onPress={() => handleHelpPress('installation')}
-                activeOpacity={0.7}
-              >
-                <Icon name="wrench" size={24} color="#A67B5B" />
-                <Text style={styles.helpText}>Installation</Text>
-                <Text style={styles.helpSubText}>Setup assistance</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* FAQ Preview */}
-          <View style={styles.faqSection}>
-            <Text style={styles.faqTitle}>Frequently Asked Questions</Text>
-            <Text style={styles.faqSubtitle}>Find quick answers to common questions</Text>
-            
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('shipping')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>How long does shipping take?</Text>
-                <Text style={styles.faqPreview}>Standard delivery takes 3-5 business days...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('returns')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>Can I return or exchange my mirror?</Text>
-                <Text style={styles.faqPreview}>Yes, we offer 30-day returns for most items...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqItem}
-              onPress={() => handleFaqPress('installation')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.faqContent}>
-                <Text style={styles.faqQuestion}>Do you offer installation services?</Text>
-                <Text style={styles.faqPreview}>Professional installation is available in select areas...</Text>
-              </View>
-              <Icon name="chevron-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.faqViewAll}
-              onPress={() => navigation.navigate('HelpAndSupportScreen')}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View All FAQs</Text>
-              <Icon name="arrow-right" size={16} color="#A67B5B" />
-            </TouchableOpacity>
-          </View>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -363,14 +345,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chatbotAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#8B5E3C',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   onlineIndicator: {
     position: 'absolute',
     bottom: 2,
@@ -380,6 +354,17 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: '#10B981',
     borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FF3B30',
+    borderWidth: 2,
     borderColor: '#FFFFFF',
   },
   messageContent: {
@@ -416,124 +401,25 @@ const styles = StyleSheet.create({
   messagePreview: {
     fontSize: 14,
     color: '#6B7280',
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  timeStamp: {
-    fontSize: 12,
-    color: '#9CA3AF',
     fontStyle: 'italic',
   },
-  helpSection: {
-    marginTop: 8,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  helpTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C1810',
-    marginBottom: 4,
-  },
-  helpSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  helpGrid: {
+  unreadMessageContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
-  helpItem: {
-    width: '48%',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(166, 123, 91, 0.2)',
-  },
-  helpText: {
-    fontSize: 13,
+  unreadMessageText: {
+    fontSize: 14,
     color: '#2C1810',
     fontWeight: '600',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  helpSubText: {
-    fontSize: 11,
-    color: '#6B7280',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  faqSection: {
-    marginTop: 16,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  faqTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C1810',
-    marginBottom: 4,
-  },
-  faqSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  faqItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  faqContent: {
     flex: 1,
-    marginRight: 8,
   },
-  faqQuestion: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 2,
-  },
-  faqPreview: {
-    fontSize: 12,
-    color: '#6B7280',
-    lineHeight: 16,
-  },
-  faqViewAll: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    marginTop: 8,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(166, 123, 91, 0.2)',
-  },
-  viewAllText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#A67B5B',
-    marginRight: 8,
+  unreadIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#A67B5B',
+    marginLeft: 8,
   },
 });
 

@@ -79,7 +79,8 @@ export default function SignInScreen() {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('Home');
+      // Navigate to Home and pass the signed-in state
+      navigation.navigate('Home', { isSignedIn: true });
     } catch (error) {
       setModalMessage({
         title: 'Sign In Failed',
@@ -403,36 +404,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  // Success Modal Styles
-  successModalView: {
-    backgroundColor: '#A68B69',
-  },
-  successIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  successModalTitle: {
-    color: '#fff',
-    fontSize: 20,
-    marginBottom: 10,
-  },
-  successModalText: {
-    color: '#fff',
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  successModalButton: {
-    backgroundColor: '#fff',
-  },
-  successModalButtonText: {
-    color: '#A68B69',
-  },
-
   // New Forgot Password Screen Styles
   forgotPasswordContainer: {
     flex: 1,
@@ -450,11 +421,11 @@ const styles = StyleSheet.create({
   },
   forgotPasswordHeaderTitle: {
     fontSize: 18,
-    fontFamily: 'Montserrat_600SemiBold',
+    fontFamily: 'Montserrat_700Bold',
     color: '#000',
     flex: 1,
     textAlign: 'center',
-    marginRight: 43, // Offset for back button to center the title
+    marginRight: 43,
   },
   forgotPasswordContent: {
     flex: 1,
