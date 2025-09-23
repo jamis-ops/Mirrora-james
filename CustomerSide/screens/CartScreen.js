@@ -122,7 +122,7 @@ export default function CartScreen() {
       const itemDoc = doc(db, "carts", user.uid, "items", itemId);
       const item = cartItems.find(i => i.id === itemId);
       const newQty = Math.max(1, (item?.quantity || 1) + delta);
-      await updateDoc(itemDoc, { quantity: newQty });
+      await updateDoc(itemDoc, { quantity: newQty, updatedAt: serverTimestamp() });
     } catch (err) {
       console.error("incrementQuantity error:", err);
       Alert.alert("Error", "Could not update quantity");
@@ -197,13 +197,14 @@ export default function CartScreen() {
     navigation.navigate("CheckoutScreen", { 
       selectedItems: selectedItems,
       totalAmount: totalAmount,
-      selectedItemIds: selectedIds, // Pass the IDs to be removed
-      userId: user.uid // Also pass user ID for reference
+      selectedItemIds: selectedIds,
+      userId: user.uid
     });
   };
 
   const renderCartItem = ({ item }) => {
     const isSelected = !!selectedMap[item.id];
+    const displayName = item.title || item.name || "Unnamed Product";
     return (
       <View style={styles.cartItemContainer}>
         <TouchableOpacity onPress={() => toggleSelect(item.id)} style={styles.checkboxContainer}>
@@ -215,7 +216,7 @@ export default function CartScreen() {
         <Image source={{ uri: item.imageUrl || 'https://via.placeholder.com/80' }} style={styles.cartItemImage} />
 
         <View style={styles.cartItemDetails}>
-          <Text style={styles.cartItemName}>{item.name}</Text>
+          <Text style={styles.cartItemName}>{displayName}</Text>
           <Text style={styles.cartItemSize}>{item.size || 'Standard'}</Text>
           <Text style={styles.cartItemPrice}>₱ {Number(item.price).toLocaleString()}</Text>
 
@@ -345,7 +346,6 @@ export default function CartScreen() {
   );
 }
 
-// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -356,19 +356,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#fff',
+ header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingTop: 50,
+    paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: "#f0f0f0",
+    backgroundColor: "#FFF",
   },
   headerTitle: {
     fontFamily: 'LeagueSpartan_700Bold',
-    fontSize: 20,
+    fontSize: 22,
     color: '#000',
   },
   cartList: {

@@ -11,13 +11,16 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import { Ionicons, MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getFirestore, doc, getDoc, onSnapshot, collection, query, orderBy } from 'firebase/firestore';
-import { db } from "../Backend/firebaseConfig";
+import { db } from '../Backend/firebaseConfig';
+import { useFonts, LeagueSpartan_700Bold } from '@expo-google-fonts/league-spartan';
 
 const { width } = Dimensions.get('window');
 
 const AboutUsScreen = ({ navigation }) => {
+  const [fontsLoaded] = useFonts({ LeagueSpartan_700Bold });
   const [currentView, setCurrentView] = useState('menu');
   const [loading, setLoading] = useState(true);
   const [businessInfo, setBusinessInfo] = useState({
@@ -30,7 +33,7 @@ const AboutUsScreen = ({ navigation }) => {
       'To deliver outstanding value through innovative solutions and exceptional customer service.',
     vision:
       'To be the leading provider in our industry, recognized for our commitment to excellence and sustainability.',
-    aboutUs: '', // Added aboutUs field
+    aboutUs: '',
   });
   const [contactInfo, setContactInfo] = useState({
     telephone1: '',
@@ -43,11 +46,9 @@ const AboutUsScreen = ({ navigation }) => {
   const [openFAQ, setOpenFAQ] = useState(null);
   const [selectedContactMethod, setSelectedContactMethod] = useState(null);
 
-  // ✅ Fetch data from Firestore with real-time listeners
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Set up real-time listeners
         const businessUnsubscribe = onSnapshot(
           doc(db, 'settings', 'businessInfo'),
           (doc) => {
@@ -57,13 +58,16 @@ const AboutUsScreen = ({ navigation }) => {
                 ...prev,
                 name: data.businessName || prev.name,
                 description: data.description || prev.description,
-                aboutUs: data.aboutUs || prev.aboutUs, // Added aboutUs
+                aboutUs: data.aboutUs || prev.aboutUs,
                 founded: data.foundedYear || prev.founded,
                 location: data.location || prev.location,
                 mission: data.mission || prev.mission,
                 vision: data.vision || prev.vision,
               }));
             }
+          },
+          (error) => {
+            console.error('Error in businessInfo onSnapshot:', error);
           }
         );
 
@@ -81,24 +85,30 @@ const AboutUsScreen = ({ navigation }) => {
                 location: data.location || prev.location,
               }));
             }
+          },
+          (error) => {
+            console.error('Error in contactInfo onSnapshot:', error);
           }
         );
 
-        // Fetch FAQs from Firestore
         const faqQuery = query(collection(db, 'faqs'), orderBy('order', 'asc'));
-        const faqUnsubscribe = onSnapshot(faqQuery, (snapshot) => {
-          const faqList = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            // Only show visible FAQs
-            if (data.isVisible !== false) {
-              faqList.push({ id: doc.id, ...data });
-            }
-          });
-          setFaqs(faqList);
-        });
+        const faqUnsubscribe = onSnapshot(
+          faqQuery,
+          (snapshot) => {
+            const faqList = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              if (data.isVisible !== false) {
+                faqList.push({ id: doc.id, ...data });
+              }
+            });
+            setFaqs(faqList);
+          },
+          (error) => {
+            console.error('Error in faqs onSnapshot:', error);
+          }
+        );
 
-        // Cleanup function to unsubscribe from listeners
         return () => {
           businessUnsubscribe();
           contactUnsubscribe();
@@ -128,7 +138,7 @@ const AboutUsScreen = ({ navigation }) => {
       return;
     }
 
-    switch(selectedContactMethod) {
+    switch (selectedContactMethod) {
       case 'telephone1':
         if (contactInfo.telephone1) {
           Linking.openURL(`tel:${contactInfo.telephone1}`);
@@ -220,12 +230,8 @@ const AboutUsScreen = ({ navigation }) => {
   );
 
   const BusinessInfoView = () => (
-    <ScrollView
-      style={styles.contentView}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
       <View style={styles.section}>
-        {/* Header Section */}
         <View style={styles.businessHeader}>
           <View style={styles.businessLogo}>
             <FontAwesome5 name="building" size={40} color="#A68B69" />
@@ -234,7 +240,6 @@ const AboutUsScreen = ({ navigation }) => {
           <Text style={styles.companyTagline}>Excellence in every service</Text>
         </View>
 
-        {/* Description Section */}
         <View style={styles.infoCard}>
           <View style={styles.cardHeader}>
             <Ionicons name="information-circle" size={24} color="#A68B69" />
@@ -245,7 +250,6 @@ const AboutUsScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Stats Section */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <View style={styles.statIcon}>
@@ -254,7 +258,6 @@ const AboutUsScreen = ({ navigation }) => {
             <Text style={styles.statValue}>{businessInfo.founded}</Text>
             <Text style={styles.statLabel}>Founded</Text>
           </View>
-          
           <View style={styles.statItem}>
             <View style={styles.statIcon}>
               <Ionicons name="location" size={24} color="#A68B69" />
@@ -264,7 +267,6 @@ const AboutUsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Mission & Vision Section */}
         <View style={styles.missionVision}>
           <View style={styles.mvCard}>
             <View style={styles.mvHeader}>
@@ -283,7 +285,6 @@ const AboutUsScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Values Section */}
         <View style={styles.valuesContainer}>
           <Text style={styles.sectionTitle}>Our Values</Text>
           <View style={styles.valuesList}>
@@ -318,12 +319,8 @@ const AboutUsScreen = ({ navigation }) => {
   );
 
   const FAQView = () => (
-    <ScrollView
-      style={styles.contentView}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
       <View style={styles.section}>
-        {/* FAQ Header Section */}
         <View style={styles.faqHeaderContainer}>
           <View style={styles.faqIconContainer}>
             <Ionicons name="help-circle" size={50} color="#A68B69" />
@@ -337,9 +334,7 @@ const AboutUsScreen = ({ navigation }) => {
         {faqs.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="help-circle-outline" size={60} color="#CAC8C5" />
-            <Text style={styles.emptyStateText}>
-              No FAQs available at the moment
-            </Text>
+            <Text style={styles.emptyStateText}>No FAQs available at the moment</Text>
             <Text style={styles.emptyStateSubtext}>
               Please check back later or contact us directly for any questions.
             </Text>
@@ -358,7 +353,7 @@ const AboutUsScreen = ({ navigation }) => {
                     <Text style={styles.faqQuestionText}>{faq.question}</Text>
                   </View>
                   <Ionicons
-                    name={openFAQ === faq.id ? "chevron-up" : "chevron-down"}
+                    name={openFAQ === faq.id ? 'chevron-up' : 'chevron-down'}
                     size={20}
                     color="#A68B69"
                   />
@@ -376,11 +371,12 @@ const AboutUsScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Support CTA Section */}
         <View style={styles.supportCta}>
           <Text style={styles.supportCtaText}>Still have questions?</Text>
-          <Text style={styles.supportCtaSubtext}>We're here to help you with any questions you may have.</Text>
-          <TouchableOpacity 
+          <Text style={styles.supportCtaSubtext}>
+            We're here to help you with any questions you may have.
+          </Text>
+          <TouchableOpacity
             style={styles.supportCtaButton}
             onPress={() => setCurrentView('contact')}
           >
@@ -392,12 +388,8 @@ const AboutUsScreen = ({ navigation }) => {
   );
 
   const ContactView = () => (
-    <ScrollView
-      style={styles.contentView}
-      showsVerticalScrollIndicator={false}
-    >
+    <ScrollView style={styles.contentView} showsVerticalScrollIndicator={false}>
       <View style={styles.section}>
-        {/* Contact Header Section */}
         <View style={styles.contactHeader}>
           <View style={styles.contactIconContainer}>
             <Ionicons name="chatbubbles" size={50} color="#A68B69" />
@@ -409,19 +401,18 @@ const AboutUsScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.contactContainer}>
-          {/* Contact Methods */}
           <View style={styles.contactMethods}>
             <Text style={styles.contactMethodsTitle}>Contact Methods</Text>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[
                 styles.contactMethod,
-                selectedContactMethod === 'telephone1' && styles.selectedContactMethod
+                selectedContactMethod === 'telephone1' && styles.selectedContactMethod,
               ]}
               onPress={() => handleContactMethodSelect('telephone1')}
             >
               <View style={styles.contactIcon}>
-               <Ionicons name="call" size={24} color="#A68B69" />
+                <Ionicons name="call" size={24} color="#A68B69" />
               </View>
               <View style={styles.contactInfo}>
                 <Text style={styles.contactLabel}>Primary Telephone</Text>
@@ -435,10 +426,10 @@ const AboutUsScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             {contactInfo.telephone2 ? (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
                   styles.contactMethod,
-                  selectedContactMethod === 'telephone2' && styles.selectedContactMethod
+                  selectedContactMethod === 'telephone2' && styles.selectedContactMethod,
                 ]}
                 onPress={() => handleContactMethodSelect('telephone2')}
               >
@@ -447,9 +438,7 @@ const AboutUsScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.contactInfo}>
                   <Text style={styles.contactLabel}>Secondary Telephone</Text>
-                  <Text style={styles.contactValue}>
-                    {contactInfo.telephone2}
-                  </Text>
+                  <Text style={styles.contactValue}>{contactInfo.telephone2}</Text>
                 </View>
                 {selectedContactMethod === 'telephone2' && (
                   <Ionicons name="checkmark-circle" size={24} color="#A68B69" />
@@ -457,10 +446,10 @@ const AboutUsScreen = ({ navigation }) => {
               </TouchableOpacity>
             ) : null}
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.contactMethod,
-                selectedContactMethod === 'email' && styles.selectedContactMethod
+                selectedContactMethod === 'email' && styles.selectedContactMethod,
               ]}
               onPress={() => handleContactMethodSelect('email')}
             >
@@ -478,10 +467,10 @@ const AboutUsScreen = ({ navigation }) => {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
                 styles.contactMethod,
-                selectedContactMethod === 'supportEmail' && styles.selectedContactMethod
+                selectedContactMethod === 'supportEmail' && styles.selectedContactMethod,
               ]}
               onPress={() => handleContactMethodSelect('supportEmail')}
             >
@@ -500,11 +489,10 @@ const AboutUsScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Contact Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
               styles.contactButton,
-              !selectedContactMethod && styles.contactButtonDisabled
+              !selectedContactMethod && styles.contactButtonDisabled,
             ]}
             onPress={handleSendMessage}
             disabled={!selectedContactMethod}
@@ -515,10 +503,11 @@ const AboutUsScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
 
-          {/* Additional Info */}
           <View style={styles.contactAdditionalInfo}>
             <Text style={styles.contactAdditionalTitle}>Business Hours</Text>
-            <Text style={styles.contactAdditionalText}>Monday - Friday: 9:00 AM - 6:00 PM</Text>
+            <Text style={styles.contactAdditionalText}>
+              Monday - Friday: 9:00 AM - 6:00 PM
+            </Text>
             <Text style={styles.contactAdditionalText}>Saturday: 10:00 AM - 4:00 PM</Text>
             <Text style={styles.contactAdditionalText}>Sunday: Closed</Text>
           </View>
@@ -540,53 +529,51 @@ const AboutUsScreen = ({ navigation }) => {
     }
   };
 
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#A68B69" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {loading ? (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#A68B69" />
         </View>
       ) : (
         <>
-         <View style={styles.header}>
-         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            console.log('Back button pressed');
-            console.log('Current view:', currentView);
-            console.log('Navigation prop:', navigation);
-            
-            if (currentView === 'menu') {
-              if (navigation) {
-                navigation.goBack();
-              } else {
-                console.log('Navigation prop is undefined');
-              }
-            } else {
-              setCurrentView('menu');
-              setSelectedContactMethod(null);
-            }
-          }}
-        >
-          <Ionicons name="arrow-back" size={24} color="#A68B69" />
-        </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {currentView === 'menu'
-              ? ''
-              : currentView === 'business'
-              ? 'Business Information'
-              : currentView === 'faq'
-              ? 'FAQs'
-              : 'Contact Us'}
-          </Text>
-          <View style={styles.placeholder} />
-</View>
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => {
+                console.log('Back button pressed');
+                console.log('Current view:', currentView);
+                console.log('Navigation prop:', navigation);
+                if (currentView === 'menu') {
+                  if (navigation) {
+                    navigation.goBack();
+                  } else {
+                    console.log('Navigation prop is undefined');
+                  }
+                } else {
+                  setCurrentView('menu');
+                  setSelectedContactMethod(null);
+                }
+              }}
+            >
+              <Icon name="chevron-left" size={32} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>About Us</Text>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('Cart')}
+            >
+              
+            </TouchableOpacity>
+          </View>
           {renderCurrentView()}
         </>
       )}
@@ -601,46 +588,35 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingTop: 50,
-    paddingBottom: 20, 
-    backgroundColor: '#FFFFFF',
+    paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0DAD6',
-    position: 'relative',
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#FFF',
   },
-  backButton: {
-    padding: 8,
-    position: 'absolute',
-    left: 16,
-    top: 50, 
-    zIndex: 1,
+  iconButton: {
+    padding: 5,
   },
   headerTitle: {
-    fontSize: 23,
-    fontWeight: 'bold',
-    color: '#A68B69',
-    textAlign: 'center',
-    marginTop: 8, 
+    fontFamily: 'LeagueSpartan_700Bold',
+    fontSize: 22,
+    color: '#000',
   },
-  placeholder: {
-    width: 40, 
-  },
- 
   menuContainer: {
     flex: 1,
     padding: 16,
   },
-welcomeSection: {
+  welcomeSection: {
     marginBottom: 24,
-    alignItems: 'center', 
+    alignItems: 'center',
   },
   welcomeTitle: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#A68b69',
+    color: '#A68B69',
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -651,7 +627,7 @@ welcomeSection: {
     textAlign: 'center',
   },
   menuSection: {
-    backgroundColor: '##FFFFFF',
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',
   },
@@ -1063,7 +1039,7 @@ welcomeSection: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '##000',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,

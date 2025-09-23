@@ -1,4 +1,4 @@
-// screens/MessageScreen.js - Modified version with notification system
+// screens/MessageScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -16,7 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 
-// Configure notifications
+// Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -33,16 +33,14 @@ const MessageScreen = () => {
   const [lastMessage, setLastMessage] = useState('');
   const [expoPushToken, setExpoPushToken] = useState('');
 
-  // Simulate receiving a message from admin (in a real app, this would come from your backend)
+  // Simulate receiving messages when screen is focused
   useEffect(() => {
-    // Check for new messages when screen is focused
     if (isFocused) {
       checkForNewMessages();
     }
-    
-    // Set up a simulated message receiver (in a real app, use WebSockets or push notifications)
+
+    // Simulate periodic message checks
     const messageInterval = setInterval(() => {
-      // 20% chance of receiving a simulated message every 30 seconds
       if (Math.random() < 0.2) {
         simulateAdminMessage();
       }
@@ -51,118 +49,151 @@ const MessageScreen = () => {
     return () => clearInterval(messageInterval);
   }, [isFocused]);
 
-  // Request notification permissions
+  // Handle push notification permissions and listener
   useEffect(() => {
-    registerForPushNotificationsAsync().then(token => {
-      if (token) setExpoPushToken(token);
-    });
+    const setupNotifications = async () => {
+      try {
+        const token = await registerForPushNotificationsAsync();
+        if (token) {
+          setExpoPushToken(token);
+          console.log('Push token:', token);
+        }
+      } catch (error) {
+        console.error('Error setting up notifications:', error);
+        Alert.alert('Error', 'Failed to initialize notifications');
+      }
+    };
+
+    setupNotifications();
 
     // Listen for incoming notifications
-    const subscription = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-      setHasUnreadMessages(true);
-    });
+    const subscription = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        console.log('Notification received:', notification);
+        setHasUnreadMessages(true);
+      }
+    );
 
     return () => subscription.remove();
   }, []);
 
+  // Request notification permissions
   const registerForPushNotificationsAsync = async () => {
-    let token;
-    if (Device.isDevice) {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    if (!Device.isDevice) {
+      Alert.alert('Error', 'Must use a physical device for push notifications');
+      return null;
+    }
+
+    try {
+      const { status: existingStatus } =
+        await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
+
       if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
       }
+
       if (finalStatus !== 'granted') {
-        alert('Failed to get push token for push notification!');
-        return;
+        Alert.alert('Error', 'Failed to get push token for notifications');
+        return null;
       }
-      token = (await Notifications.getExpoPushTokenAsync()).data;
-    } else {
-      alert('Must use physical device for Push Notifications');
-    }
 
-    if (Platform.OS === 'android') {
-      Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-      });
-    }
+      const token = (
+        await Notifications.getExpoPushTokenAsync({
+          projectId: 'your-project-id', // Replace with your Expo project ID
+        })
+      ).data;
 
-    return token;
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        });
+      }
+
+      return token;
+    } catch (error) {
+      console.error('Error registering for push notifications:', error);
+      return null;
+    }
   };
 
+  // Check for new messages (simulated)
   const checkForNewMessages = async () => {
-    // In a real app, this would check your backend for new messages
-    // For simulation, we'll use a random chance
-    const hasNewMessages = Math.random() < 0.3;
-    if (hasNewMessages) {
-      setHasUnreadMessages(true);
-      setLastMessage('We have a special offer for you!');
-      
-      // Show local notification
-      await schedulePushNotification();
-    } else {
-      setHasUnreadMessages(false);
+    try {
+      const hasNewMessages = Math.random() < 0.3;
+      if (hasNewMessages) {
+        setHasUnreadMessages(true);
+        setLastMessage('We have a special offer for you!');
+        await schedulePushNotification();
+      } else {
+        setHasUnreadMessages(false);
+      }
+    } catch (error) {
+      console.error('Error checking for new messages:', error);
     }
   };
 
+  // Schedule a local push notification
   const schedulePushNotification = async () => {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "New message from Mirrora Philippines",
-        body: "You have a new message from our support team",
-        data: { data: 'goes here' },
-      },
-      trigger: { seconds: 1 },
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'New message from Mirrora Philippines',
+          body: 'You have a new message from our support team',
+          data: { data: 'goes here' },
+        },
+        trigger: { seconds: 1 },
+      });
+    } catch (error) {
+      console.error('Error scheduling notification:', error);
+    }
   };
 
-  const simulateAdminMessage = () => {
+  // Simulate receiving an admin message
+  const simulateAdminMessage = async () => {
     const messages = [
-      "Hello! We have a new collection available.",
-      "Your order status has been updated.",
-      "Special discount just for you!",
-      "We noticed you were browsing our mirrors - need help?",
-      "Thank you for being a valued customer!"
+      'Hello! We have a new collection available.',
+      'Your order status has been updated.',
+      'Special discount just for you!',
+      'We noticed you were browsing our mirrors - need help?',
+      'Thank you for being a valued customer!',
     ];
-    
+
     const randomMessage = messages[Math.floor(Math.random() * messages.length)];
     setHasUnreadMessages(true);
     setLastMessage(randomMessage);
-    
-    // Show notification
-    schedulePushNotification();
-    
-    // Alert for demo purposes (wouldn't use in production)
+
+    await schedulePushNotification();
+
+    // Alert for demo purposes (remove in production)
     Alert.alert(
-      "New Message",
+      'New Message',
       `You have a new message from Mirrora Philippines: "${randomMessage}"`,
-      [{ text: "OK", onPress: () => console.log("OK Pressed") }]
+      [{ text: 'OK', onPress: () => console.log('OK Pressed') }]
     );
   };
 
+  // Navigate to chat screen and reset unread messages
   const handleSupportChat = () => {
-    // Reset unread messages when user opens chat
     setHasUnreadMessages(false);
     navigation.navigate('ChatScreen');
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar 
-        barStyle="light-content" 
-        backgroundColor="#A67B5B" 
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#A67B5B"
         translucent={false}
       />
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
             activeOpacity={0.7}
@@ -175,15 +206,17 @@ const MessageScreen = () => {
 
         {/* Tab Container */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity 
-            style={styles.tab} 
+          <TouchableOpacity
+            style={styles.tab}
             onPress={() => setActiveTab('Support')}
             activeOpacity={0.7}
           >
-            <Text style={[
-              styles.tabText, 
-              activeTab === 'Support' && styles.activeTabText
-            ]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Support' && styles.activeTabText,
+              ]}
+            >
               Customer Support
             </Text>
             {activeTab === 'Support' && <View style={styles.activeTabUnderline} />}
@@ -191,14 +224,14 @@ const MessageScreen = () => {
         </View>
 
         {/* Content */}
-        <ScrollView 
-          style={styles.scrollView} 
+        <ScrollView
+          style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollViewContent}
         >
           {activeTab === 'Support' && (
-            <TouchableOpacity 
-              style={styles.messageCard} 
+            <TouchableOpacity
+              style={styles.messageCard}
               onPress={handleSupportChat}
               activeOpacity={0.8}
             >
@@ -209,7 +242,7 @@ const MessageScreen = () => {
                 <View style={styles.onlineIndicator} />
                 {hasUnreadMessages && <View style={styles.notificationBadge} />}
               </View>
-              
+
               <View style={styles.messageContent}>
                 <View style={styles.messageHeader}>
                   <Text style={styles.senderName}>Mirrora Philippines</Text>
@@ -218,7 +251,7 @@ const MessageScreen = () => {
                     <Text style={styles.onlineText}>Online</Text>
                   </View>
                 </View>
-                
+
                 {hasUnreadMessages && lastMessage ? (
                   <View style={styles.unreadMessageContainer}>
                     <Text style={styles.unreadMessageText} numberOfLines={1}>
@@ -232,7 +265,7 @@ const MessageScreen = () => {
                   </Text>
                 )}
               </View>
-              
+
               <Icon name="chevron-right" size={20} color="#A67B5B" />
             </TouchableOpacity>
           )}

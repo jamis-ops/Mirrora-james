@@ -27,11 +27,8 @@ import SettingScreen from "../screens/SettingScreen";
 import VerifyEmailScreen from "../screens/VerifyEmailScreen";
 import CustomOrderCheckoutScreen from "../screens/CustomOrderCheckoutScreen";
 import ReviewScreen from "../screens/ReviewScreen";
-
-// Import TabNavigator
+import CartScreen from "../screens/CartScreen";
 import TabNavigator from "../components/TabNavigator";
-
-// Import FloatingChatbot
 import FloatingChatbot from "../components/FloatingChatbot";
 import AboutUsScreen from "../screens/AboutUsScreen";
 import MyAddressScreen from "../screens/MyAddressScreen";
@@ -91,7 +88,6 @@ export default function StackNavigator() {
       const currentRoute = state.routes[state.index];
       let routeName = currentRoute.name;
 
-      // Handle nested routes (e.g., within TabNavigator)
       if (currentRoute.state && currentRoute.state.routes && currentRoute.state.routes.length > 0) {
         const nestedRoute = currentRoute.state.routes[currentRoute.state.index];
         routeName = nestedRoute.name;
@@ -109,7 +105,6 @@ export default function StackNavigator() {
     }
   };
 
-  // Define screens where FloatingChatbot should be hidden
   const hiddenScreens = [
     "Splash",
     "Onboarding",
@@ -123,7 +118,6 @@ export default function StackNavigator() {
     "ChatbotScreen",
   ];
 
-  // Show FloatingChatbot only when not loading and not on hidden screens
   const shouldShowFloatingChatbot = !isLoading && !hiddenScreens.includes(currentRouteName);
 
   if (isLoading) {
@@ -179,7 +173,7 @@ export default function StackNavigator() {
           name="ProductListScreen"
           component={ProductListScreen}
           options={({ route }) => ({
-            title: route.params?.category || 'Products',
+            title: route.params?.category || '',
           })}
         />
         <Stack.Screen
@@ -192,7 +186,7 @@ export default function StackNavigator() {
         <Stack.Screen
           name="CheckoutScreen"
           component={CheckoutScreen}
-          options={{ title: 'Checkout' }}
+          options={{ headerShown: false }} // Removed header
         />
         <Stack.Screen
           name="OrderConfirmationScreen"
@@ -202,7 +196,7 @@ export default function StackNavigator() {
         <Stack.Screen
           name="MyOrderScreen"
           component={MyOrderScreen}
-          options={{ title: 'My Orders' }}
+          options={{ title: 'My Orders', headerShown: false }}
         />
         <Stack.Screen
           name="ReviewScreen"
@@ -263,19 +257,23 @@ export default function StackNavigator() {
         <Stack.Screen
           name="SettingScreen"
           component={SettingScreen}
-          options={{ title: 'Settings' }}
+          options={{ title: 'Settings', headerShown: false }}
         />
-         <Stack.Screen
+        <Stack.Screen
           name="AboutUsScreen"
           component={AboutUsScreen}
-          options={{ title: 'AboutUsScreen' }}
+          options={{ title: 'AboutUsScreen', headerShown: false }}
         />
-          <Stack.Screen
-            name="MyAddressScreen"
-            component={MyAddressScreen}
-            options={{ title: 'My Address' }}
-          />
-
+        <Stack.Screen
+          name="MyAddressScreen"
+          component={MyAddressScreen}
+          options={{ title: 'My Address', headerShown: false }}
+        />
+        <Stack.Screen
+          name="CartScreen"
+          component={CartScreen}
+          options={{ headerShown: false }} // Removed header
+        />
       </Stack.Navigator>
 
       {/* Floating Chatbot */}
@@ -295,7 +293,6 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 10,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   toastContainer: {
     borderLeftWidth: 6,

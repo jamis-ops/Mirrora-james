@@ -11,6 +11,8 @@ import {
   Dimensions,
   ScrollView,
   ActivityIndicator,
+  Platform,
+  Modal,
 } from "react-native";
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -67,10 +69,19 @@ export default function HomeScreen({ route }) {
 
   const [activeBanner, setActiveBanner] = useState(0);
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [banners, setBanners] = useState([]);
   const [tempClicked, setTempClicked] = useState({});
+  const [tempCartAdded, setTempCartAdded] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSignedIn, setIsSignedIn] = useState(false);
+  
+  // Filter states
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  
+  // Predefined mirror categories
+  const categories = ["All", "Arch", "Capsules", "Grid", "Irregular", "Round"];
 
   // Get the isSignedIn parameter from route
   useEffect(() => {
@@ -126,7 +137,10 @@ export default function HomeScreen({ route }) {
           id: d.id,
           ...d.data(),
         }));
+        
         setProducts(productList);
+        setFilteredProducts(productList);
+        
       } catch (error) {
         console.error("Error fetching products:", error);
       } finally {
@@ -134,7 +148,29 @@ export default function HomeScreen({ route }) {
       }
     };
     fetchProducts();
-  }, []);
+  }, [isFocused]);
+
+  // Filter products based on selected category
+  useEffect(() => {
+    if (selectedCategory === "All") {
+      setFilteredProducts(products);
+    } else {
+      const filtered = products.filter(product => product.category === selectedCategory);
+      setFilteredProducts(filtered);
+    }
+  }, [selectedCategory, products]);
+
+  // Handle category selection
+  const handleCategorySelect = (category) => {
+    setSelectedCategory(category);
+    setShowFilterDropdown(false);
+    Toast.show({
+      type: "success",
+      text1: "Filter Applied",
+      text2: category === "All" ? "Showing all mirrors" : `Showing ${category} mirrors`,
+      position: "top",
+    });
+  };
 
   // Add to wishlist
   const addToWishlist = async (product) => {
@@ -154,7 +190,7 @@ export default function HomeScreen({ route }) {
       if (!existing.exists()) {
         await setDoc(ref, {
           productId: product.id,
-          title: product.name,
+          title: product.name || product.title || "Unnamed Product",
           price: product.price,
           imageUrl: product.imageUrl,
           addedAt: serverTimestamp(),
@@ -166,14 +202,14 @@ export default function HomeScreen({ route }) {
         Toast.show({
           type: "success",
           text1: "Added to Wishlist",
-          text2: `${product.name} has been added!`,
+          text2: `${product.name || product.title || "Unnamed Product"} has been added!`,
           position: "top",
         });
       } else {
         Toast.show({
           type: "info",
           text1: "Already in Wishlist",
-          text2: `${product.name} is already saved.`,
+          text2: `${product.name || product.title || "Unnamed Product"} is already saved.`,
           position: "top",
         });
       }
@@ -201,35 +237,48 @@ export default function HomeScreen({ route }) {
         });
         return;
       }
-      const itemRef = doc(db, "users", user.uid, "cart", product.id);
+      const itemRef = doc(db, "carts", user.uid, "items", product.id);
       const snap = await getDoc(itemRef);
       if (snap.exists()) {
         await updateDoc(itemRef, {
           quantity: (snap.data().quantity || 1) + qty,
           updatedAt: serverTimestamp(),
         });
+        setTempCartAdded((prev) => ({ ...prev, [product.id]: true }));
+        setTimeout(() => {
+          setTempCartAdded((prev) => ({ ...prev, [product.id]: false }));
+        }, 1000);
         Toast.show({
           type: "info",
           text1: "Cart Updated",
-          text2: `${product.name} quantity increased.`,
+          text2: `${product.name || product.title || "Unnamed Product"} quantity increased.`,
           position: "top",
         });
       } else {
         await setDoc(itemRef, {
           productId: product.id,
-          title: product.name || "",
+          title: product.name || product.title || "Unnamed Product",
           price: product.price || 0,
           imageUrl: product.imageUrl || "",
+          description: product.description || "",
+          dimensions: product.dimensions || "",
+          weight: product.weight || "",
           quantity: qty,
           addedAt: serverTimestamp(),
         });
+        setTempCartAdded((prev) => ({ ...prev, [product.id]: true }));
+        setTimeout(() => {
+          setTempCartAdded((prev) => ({ ...prev, [product.id]: false }));
+        }, 1000);
         Toast.show({
           type: "success",
           text1: "Added to Cart",
-          text2: `${product.name} is now in your cart.`,
+          text2: `${product.name || product.title || "Unnamed Product"} is now in your cart.`,
           position: "top",
         });
       }
+      // Navigate to CartScreen
+      navigation.navigate("CartScreen");
     } catch (err) {
       console.error("addToCart error:", err);
       Toast.show({
@@ -287,10 +336,59 @@ export default function HomeScreen({ route }) {
                 placeholderTextColor="#777"
               />
             </View>
-            <TouchableOpacity style={styles.filterButton}>
-              <Icon name="tune" size={24} color="#000" />
+            <TouchableOpacity 
+              style={[styles.filterButton, selectedCategory !== "All" && styles.activeFilterButton]}
+              onPress={() => setShowFilterDropdown(!showFilterDropdown)}
+            >
+              <Icon name="tune" size={24} color={selectedCategory !== "All" ? "#fff" : "#000"} />
+              {selectedCategory !== "All" && <View style={styles.filterDot} />}
             </TouchableOpacity>
           </View>
+
+          {/* FILTER DROPDOWN */}
+          {showFilterDropdown && (
+            <View style={styles.dropdownContainer}>
+              <View style={styles.dropdown}>
+                {categories.map((category, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.dropdownItem,
+                      selectedCategory === category && styles.selectedDropdownItem,
+                      index === categories.length - 1 && styles.lastDropdownItem
+                    ]}
+                    onPress={() => handleCategorySelect(category)}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownText,
+                        selectedCategory === category && styles.selectedDropdownText
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                    {selectedCategory === category && (
+                      <Icon name="check" size={18} color="#A68B69" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Current Filter Indicator */}
+          {selectedCategory !== "All" && (
+            <View style={styles.currentFilterContainer}>
+              <Text style={styles.currentFilterText}>Showing: {selectedCategory}</Text>
+              <TouchableOpacity
+                onPress={() => setSelectedCategory("All")}
+                style={styles.clearFilterButton}
+              >
+                <Icon name="close-circle" size={16} color="#A68B69" />
+                <Text style={styles.clearFilterText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* BANNERS */}
           <FlatList
@@ -345,11 +443,13 @@ export default function HomeScreen({ route }) {
 
           {/* PRODUCTS */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Popular</Text>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory === "All" ? "Popular" : selectedCategory}
+            </Text>
             <TouchableOpacity
               onPress={() =>
-                navigation.navigate("CategoryScreen", {
-                  category: "Most Popular",
+                navigation.navigate("ProductListScreen", {
+                  category: selectedCategory === "All" ? "Most Popular" : selectedCategory,
                 })
               }
             >
@@ -362,14 +462,26 @@ export default function HomeScreen({ route }) {
               <ActivityIndicator size="large" color="#A68B69" />
               <Text style={styles.loadingText}>Loading products...</Text>
             </View>
+          ) : filteredProducts.length === 0 ? (
+            <View style={styles.noProductsContainer}>
+              <Icon name="package-variant" size={50} color="#ccc" />
+              <Text style={styles.noProductsText}>No products found in this category</Text>
+              <TouchableOpacity
+                onPress={() => setSelectedCategory("All")}
+                style={styles.showAllButton}
+              >
+                <Text style={styles.showAllButtonText}>Show All Products</Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             <FlatList
-              data={products}
+              data={filteredProducts.slice(0, 10)}
               keyExtractor={(item) => item.id}
               numColumns={2}
               columnWrapperStyle={styles.productRow}
               renderItem={({ item }) => {
                 const isTempClicked = tempClicked[item.id];
+                const isTempAdded = tempCartAdded[item.id];
                 const productSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
                 return (
                   <TouchableOpacity
@@ -407,7 +519,7 @@ export default function HomeScreen({ route }) {
                           style={styles.addToCartButton}
                           onPress={() => addToCart(item)}
                         >
-                          <Icon name="plus" size={16} color="#fff" />
+                          <Icon name={isTempAdded ? "check" : "plus"} size={16} color="#fff" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -420,6 +532,15 @@ export default function HomeScreen({ route }) {
         </ScrollView>
         
         <FloatingChatbot isSignedIn={isSignedIn} />
+
+        {/* Overlay to close dropdown when clicking outside */}
+        {showFilterDropdown && (
+          <TouchableOpacity
+            style={styles.overlay}
+            activeOpacity={1}
+            onPress={() => setShowFilterDropdown(false)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -474,7 +595,50 @@ const styles = StyleSheet.create({
   },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, height: 40, fontFamily: "Montserrat_400Regular" },
-  filterButton: { padding: 8, borderRadius: 10, marginLeft: 10 },
+  filterButton: { 
+    padding: 8, 
+    borderRadius: 10, 
+    marginLeft: 10,
+    position: "relative",
+  },
+  activeFilterButton: {
+    backgroundColor: "#A68B69",
+  },
+  filterDot: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fff",
+  },
+  currentFilterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginTop: 10,
+    paddingVertical: 8,
+    backgroundColor: "#f0f0f0",
+    marginHorizontal: 20,
+    borderRadius: 8,
+  },
+  currentFilterText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#666",
+  },
+  clearFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  clearFilterText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 12,
+    color: "#A68B69",
+    marginLeft: 4,
+  },
   bannerList: { marginTop: 20, paddingHorizontal: 20 },
   banner: {
     width: 320,
@@ -557,4 +721,77 @@ const styles = StyleSheet.create({
   addToCartButton: { backgroundColor: "#A68B69", padding: 8, borderRadius: 20 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", height: 300 },
   loadingText: { marginTop: 10, fontFamily: "Montserrat_400Regular", color: "#A68B69" },
+  noProductsContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    height: 300,
+  },
+  noProductsText: {
+    fontFamily: "Montserrat_400Regular",
+    color: "#999",
+    marginTop: 10,
+    textAlign: "center",
+  },
+  showAllButton: {
+    backgroundColor: "#A68B69",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 15,
+  },
+  showAllButtonText: {
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#fff",
+    fontSize: 14,
+  },
+  // Modal Styles
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "transparent",
+  },
+  dropdownContainer: {
+    paddingHorizontal: 20,
+    marginTop: 5,
+    zIndex: 1000,
+  },
+  dropdown: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f5f5f5",
+  },
+  lastDropdownItem: {
+    borderBottomWidth: 0,
+  },
+  selectedDropdownItem: {
+    backgroundColor: "#f8f8f8",
+  },
+  dropdownText: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 15,
+    color: "#333",
+  },
+  selectedDropdownText: {
+    fontFamily: "Montserrat_600SemiBold",
+    color: "#A68B69",
+  },
 });

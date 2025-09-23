@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Eye, EyeOff, X } from "lucide-react";
 import { 
   signInWithEmailAndPassword, 
@@ -7,7 +7,7 @@ import {
   verifyPasswordResetCode 
 } from "firebase/auth";
 import { auth } from "../../Backend/firebaseConfig";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 // Import assets
 import loginBg from "../assets/loginbg.png";
@@ -24,14 +24,31 @@ export default function Login() {
   // Forgot password state
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotPasswordStep, setForgotPasswordStep] = useState(1);
-  const [resetCode, setResetCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [forgotPasswordError, setForgotPasswordError] = useState("");
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState("");
 
+  // Password reset state for URL parameters
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const ADMIN_EMAIL = "mirrora@gmail.com";
+
+  // Check for password reset parameters on component mount
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    const oobCode = searchParams.get('oobCode');
+    
+    if (mode === 'resetPassword' && oobCode) {
+      setShowPasswordResetModal(true);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,7 +78,7 @@ export default function Login() {
     setError("⛔ Account creation is disabled. Only admin can log in.");
   };
 
-  // Forgot password handlers using Firebase
+  // Send password reset email with custom action URL
   const handleSendResetEmail = async () => {
     setForgotPasswordError("");
     setForgotPasswordSuccess("");
@@ -72,116 +89,79 @@ export default function Login() {
     }
 
     try {
-      await sendPasswordResetEmail(auth, forgotEmail);
-      setForgotPasswordSuccess("Password reset email sent! Check your inbox.");
-      setForgotPasswordStep(2);
+      // Configure the action code settings to redirect back to your login page
+      const actionCodeSettings = {
+        url: `${window.location.origin}/login`, // This will be the URL users return to
+        handleCodeInApp: false, // This ensures the link opens in the browser, not the app
+      };
+
+      await sendPasswordResetEmail(auth, forgotEmail, actionCodeSettings);
+      setForgotPasswordSuccess("Password reset email sent! Check your inbox and click the link to reset your password.");
+      
+      // Close modal after a delay
+      setTimeout(() => {
+        setShowForgotPasswordModal(false);
+        setForgotEmail("");
+        setForgotPasswordSuccess("");
+      }, 3000);
     } catch (err) {
       console.error("Password reset error:", err);
       setForgotPasswordError("Failed to send reset email. Please check your email address.");
     }
   };
 
-  const handleVerifyCodeAndReset = async () => {
-    setForgotPasswordError("");
-    setForgotPasswordSuccess("");
+  // Handle password reset from email link
+  const handlePasswordResetFromLink = async () => {
+    setResetError("");
+    setResetSuccess("");
     
-    if (!resetCode || !newPassword) {
-      setForgotPasswordError("Please enter the code from your email and a new password.");
+    if (!newPassword || !confirmNewPassword) {
+      setResetError("Please fill in both password fields.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setResetError("Passwords do not match.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setResetError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    const oobCode = searchParams.get('oobCode');
+    
+    if (!oobCode) {
+      setResetError("Invalid reset link. Please request a new password reset email.");
       return;
     }
 
     try {
-      // Verify the reset code first
-      await verifyPasswordResetCode(auth, resetCode);
+      // Verify the code first
+      await verifyPasswordResetCode(auth, oobCode);
       
       // If verification succeeds, confirm the password reset
-      await confirmPasswordReset(auth, resetCode, newPassword);
+      await confirmPasswordReset(auth, oobCode, newPassword);
       
-      setForgotPasswordSuccess("Your password has been reset successfully!");
-      setForgotPasswordStep(3);
+      setResetSuccess("Your password has been reset successfully! You can now log in with your new password.");
+      
+      // Clear URL parameters and close modal after success
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+        setShowPasswordResetModal(false);
+        setNewPassword("");
+        setConfirmNewPassword("");
+      }, 2000);
     } catch (err) {
       console.error("Password reset error:", err);
-      setForgotPasswordError("Invalid code or password. Please try again.");
-    }
-  };
-
-  const renderForgotPasswordContent = () => {
-    switch (forgotPasswordStep) {
-      case 1:
-        return (
-          <>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Forgot Password?</h2>
-            <p className="text-gray-600 mb-6">Enter your email to receive a password reset link.</p>
-            <input
-              type="email"
-              value={forgotEmail}
-              onChange={(e) => setForgotEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all mb-4"
-              placeholder="Enter your email"
-            />
-            <button
-              onClick={handleSendResetEmail}
-              className="w-full bg-[#A68B69] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#8C7355] transition-colors"
-            >
-              Send Reset Email
-            </button>
-            {forgotPasswordError && <p className="text-red-500 text-sm mt-4 text-center">{forgotPasswordError}</p>}
-            {forgotPasswordSuccess && <p className="text-green-500 text-sm mt-4 text-center">{forgotPasswordSuccess}</p>}
-          </>
-        );
-      case 2:
-        return (
-          <>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h2>
-            <p className="text-gray-600 mb-6">
-              Check your email for a reset link. The link contains a code that you can enter below along with your new password.
-            </p>
-            <input
-              type="text"
-              value={resetCode}
-              onChange={(e) => setResetCode(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all mb-4"
-              placeholder="Enter code from email"
-            />
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all mb-4"
-              placeholder="Enter new password"
-            />
-            <button
-              onClick={handleVerifyCodeAndReset}
-              className="w-full bg-[#A68B69] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#8C7355] transition-colors"
-            >
-              Reset Password
-            </button>
-            {forgotPasswordError && <p className="text-red-500 text-sm mt-4 text-center">{forgotPasswordError}</p>}
-            {forgotPasswordSuccess && <p className="text-green-500 text-sm mt-4 text-center">{forgotPasswordSuccess}</p>}
-          </>
-        );
-      case 3:
-        return (
-          <>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Success!</h2>
-            <p className="text-green-600 mb-6">{forgotPasswordSuccess}</p>
-            <p className="text-gray-600 mb-6">You can now return to the login page with your new password.</p>
-            <button
-              onClick={() => {
-                setShowForgotPasswordModal(false);
-                setForgotPasswordStep(1);
-                setForgotEmail("");
-                setResetCode("");
-                setNewPassword("");
-              }}
-              className="w-full bg-gray-500 text-white py-3 rounded-lg font-bold text-lg hover:bg-gray-600 transition-colors"
-            >
-              Return to Login
-            </button>
-          </>
-        );
-      default:
-        return null;
+      if (err.code === 'auth/expired-action-code') {
+        setResetError("This password reset link has expired. Please request a new one.");
+      } else if (err.code === 'auth/invalid-action-code') {
+        setResetError("This password reset link is invalid. Please request a new one.");
+      } else {
+        setResetError("Failed to reset password. Please try again or request a new reset link.");
+      }
     }
   };
 
@@ -293,15 +273,12 @@ export default function Login() {
 
       {/* Forgot Password Modal */}
       {showForgotPasswordModal && (
-        <div className="fixed inset-0 bg-black/5 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out">
           <div className="bg-white rounded-lg p-8 w-full max-w-lg relative transform transition-all duration-300 ease-in-out scale-100">
             <button
               onClick={() => {
                 setShowForgotPasswordModal(false);
-                setForgotPasswordStep(1);
                 setForgotEmail("");
-                setResetCode("");
-                setNewPassword("");
                 setForgotPasswordError("");
                 setForgotPasswordSuccess("");
               }}
@@ -309,7 +286,103 @@ export default function Login() {
             >
               <X size={24} />
             </button>
-            {renderForgotPasswordContent()}
+            
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Forgot Password?</h2>
+            <p className="text-gray-600 mb-6">Enter your email and we'll send you a link to reset your password.</p>
+            
+            <input
+              type="email"
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all mb-4"
+              placeholder="Enter your email"
+            />
+            
+            <button
+              onClick={handleSendResetEmail}
+              className="w-full bg-[#A68B69] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#8C7355] transition-colors"
+            >
+              Send Reset Link
+            </button>
+            
+            {forgotPasswordError && <p className="text-red-500 text-sm mt-4 text-center">{forgotPasswordError}</p>}
+            {forgotPasswordSuccess && <p className="text-green-500 text-sm mt-4 text-center">{forgotPasswordSuccess}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset Modal (from email link) */}
+      {showPasswordResetModal && (
+        <div className="fixed inset-0 bg-black/50 bg-opacity-75 flex items-center justify-center p-4 z-50 transition-opacity duration-300 ease-in-out">
+          <div className="bg-white rounded-lg p-8 w-full max-w-lg relative transform transition-all duration-300 ease-in-out scale-100">
+            <button
+              onClick={() => {
+                navigate("/login", { replace: true });
+                setShowPasswordResetModal(false);
+                setNewPassword("");
+                setConfirmNewPassword("");
+                setResetError("");
+                setResetSuccess("");
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X size={24} />
+            </button>
+            
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Reset Your Password</h2>
+            <p className="text-gray-600 mb-6">Enter your new password below.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-4 py-3 pr-14 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all"
+                    placeholder="Enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 cursor-pointer flex items-center p-1 transition-colors hover:text-gray-700"
+                  >
+                    {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Confirm New Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    className="w-full px-4 py-3 pr-14 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#A68B69] transition-all"
+                    placeholder="Confirm new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 cursor-pointer flex items-center p-1 transition-colors hover:text-gray-700"
+                  >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={handlePasswordResetFromLink}
+              className="w-full bg-[#A68B69] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#8C7355] transition-colors mt-6"
+            >
+              Reset Password
+            </button>
+            
+            {resetError && <p className="text-red-500 text-sm mt-4 text-center">{resetError}</p>}
+            {resetSuccess && <p className="text-green-500 text-sm mt-4 text-center">{resetSuccess}</p>}
           </div>
         </div>
       )}

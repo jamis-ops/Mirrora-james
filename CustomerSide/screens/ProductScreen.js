@@ -1,4 +1,3 @@
-// screens/ProductScreen.js
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -27,10 +26,11 @@ import {
   where,
   onSnapshot,
   orderBy,
+  serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../Backend/firebaseConfig";
 
-// Font imports from your HomeScreen
+// Font imports
 import {
   useFonts as useLeagueSpartan,
   LeagueSpartan_700Bold,
@@ -59,7 +59,7 @@ export default function ProductScreen() {
     Montserrat_600SemiBold,
   });
 
-  // ✅ Check if the item is already in the wishlist when the screen loads
+  // Check if the item is already in the wishlist when the screen loads
   useEffect(() => {
     const checkWishlistStatus = async () => {
       const user = auth.currentUser;
@@ -76,7 +76,7 @@ export default function ProductScreen() {
     checkWishlistStatus();
   }, [product.id]);
 
-  // ✅ Fetch reviews for this product
+  // Fetch reviews for this product
   useEffect(() => {
     const fetchReviews = () => {
       const q = query(
@@ -125,7 +125,7 @@ export default function ProductScreen() {
     return () => unsubscribe();
   }, [product.id]);
 
-  // ✅ Add product to cart in Firestore
+  // Add product to cart in Firestore
   const handleAddToCart = async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -133,6 +133,7 @@ export default function ProductScreen() {
         type: "error",
         text1: "Login Required",
         text2: "Please sign in to add items to your cart.",
+        position: "top",
       });
       return;
     }
@@ -145,37 +146,49 @@ export default function ProductScreen() {
         // If product already in cart → increment quantity
         await updateDoc(cartRef, {
           quantity: increment(1),
+          updatedAt: serverTimestamp(),
+        });
+        Toast.show({
+          type: "info",
+          text1: "Cart Updated",
+          text2: `${product.name || product.title || "Unnamed Product"} quantity increased.`,
+          position: "top",
         });
       } else {
         // Add new product to cart
         await setDoc(cartRef, {
-          name: product.name,
-          price: product.price,
-          imageUrl: product.imageUrl,
+          productId: product.id,
+          title: product.name || product.title || "Unnamed Product",
+          price: product.price || 0,
+          imageUrl: product.imageUrl || "",
           description: product.description || "",
           dimensions: product.dimensions || "",
           weight: product.weight || "",
           quantity: 1,
-          createdAt: new Date(),
+          addedAt: serverTimestamp(),
+        });
+        Toast.show({
+          type: "success",
+          text1: "Added to Cart",
+          text2: `${product.name || product.title || "Unnamed Product"} is now in your cart.`,
+          position: "top",
         });
       }
 
-      Toast.show({
-        type: "success",
-        text1: "Added to Cart",
-        text2: `${product.name} has been added to your cart.`,
-      });
+      // Navigate to CartScreen
+      navigation.navigate("CartScreen");
     } catch (error) {
-      console.error("❌ Error adding to cart:", error);
+      console.error("Error adding to cart:", error);
       Toast.show({
         type: "error",
-        text1: "Error",
+        text1: "Cart Error",
         text2: "Failed to add item. Please try again.",
+        position: "top",
       });
     }
   };
 
-  // ✅ Wishlist toggle handler
+  // Wishlist toggle handler
   const handleWishlistToggle = async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -183,6 +196,7 @@ export default function ProductScreen() {
         type: "error",
         text1: "Login Required",
         text2: "Please sign in to manage your wishlist.",
+        position: "top",
       });
       return;
     }
@@ -199,6 +213,7 @@ export default function ProductScreen() {
           type: "info",
           text1: "Removed from Wishlist",
           text2: "The item has been removed from your list.",
+          position: "top",
         });
       } catch (error) {
         console.error("Error removing from wishlist:", error);
@@ -206,6 +221,7 @@ export default function ProductScreen() {
           type: "error",
           text1: "Error",
           text2: "Failed to remove item. Please try again.",
+          position: "top",
         });
         setIsWishlisted(true);
       }
@@ -224,6 +240,7 @@ export default function ProductScreen() {
         type: "error",
         text1: "Login Required",
         text2: "Please sign in to write a review.",
+        position: "top",
       });
       return;
     }
@@ -276,17 +293,9 @@ export default function ProductScreen() {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Product Image container with the back button */}
+        {/* Product Image container */}
         <View style={styles.imageContainer}>
           <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-            >
-              <Icon name="chevron-left" size={30} color="#000" />
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* Product Details Section */}
@@ -306,7 +315,7 @@ export default function ProductScreen() {
               style={styles.writeReviewButton}
               onPress={handleWriteReview}
             >
-           
+              <Text style={styles.writeReviewText}>Write a Review</Text>
             </TouchableOpacity>
           </View>
 
@@ -424,17 +433,6 @@ export default function ProductScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF7EC" },
   imageContainer: { position: "relative" },
-  header: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 15,
-    paddingTop: 50,
-  },
-  backButton: { padding: 5 },
   productImage: { width: "100%", height: 450, resizeMode: "cover" },
   detailsContainer: { paddingHorizontal: 20, paddingVertical: 15 },
   productName: { 

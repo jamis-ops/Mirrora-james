@@ -395,8 +395,7 @@ export default function ProfileScreen() {
                 </View>
             </Modal>
 
-            {/* Bottom Navigation Bar */}
-            <BottomNavigationBar navigation={navigation} currentScreen="account" />
+           
         </View>
     );
 }

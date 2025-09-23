@@ -1,4 +1,3 @@
-// screens/ProductListScreen.js
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -102,16 +101,19 @@ export default function ProductListScreen() {
       return;
     }
 
-    const docRef = doc(db, "users", user.uid, "wishlist", product.id);
+    const docRef = doc(db, "wishlists", user.uid, "items", product.id);
     
     try {
       const snap = await getDoc(docRef);
       if (!snap.exists()) {
         await setDoc(docRef, {
           productId: product.id,
-          name: product.name,
-          price: product.price,
-          imageUrl: product.imageUrl,
+          title: product.name || product.title || "Unnamed Product",
+          price: product.price || 0,
+          imageUrl: product.imageUrl || "",
+          description: product.description || "",
+          dimensions: product.dimensions || "",
+          weight: product.weight || "",
           addedAt: serverTimestamp(),
         });
 
@@ -123,17 +125,41 @@ export default function ProductListScreen() {
         Toast.show({
           type: "success",
           text1: "💖 Added to Wishlist",
-          text2: `${product.name} has been saved.`,
+          text2: `${product.name || product.title || "Unnamed Product"} has been saved.`,
           position: "top",
-          onPress: () => navigation.navigate("Wishlist"),
+          onPress: () => {
+            try {
+              navigation.navigate("Home", { screen: "Wishlist" });
+            } catch (error) {
+              console.error("Navigation to Wishlist failed:", error);
+              Toast.show({
+                type: "error",
+                text1: "Navigation Error",
+                text2: "Unable to navigate to Wishlist. Please check navigation setup.",
+                position: "top",
+              });
+            }
+          },
         });
       } else {
         Toast.show({
           type: "info",
           text1: "Already in Wishlist",
-          text2: `${product.name} is already saved.`,
+          text2: `${product.name || product.title || "Unnamed Product"} is already saved.`,
           position: "top",
-          onPress: () => navigation.navigate("Wishlist"),
+          onPress: () => {
+            try {
+              navigation.navigate("Home", { screen: "Wishlist" });
+            } catch (error) {
+              console.error("Navigation to Wishlist failed:", error);
+              Toast.show({
+                type: "error",
+                text1: "Navigation Error",
+                text2: "Unable to navigate to Wishlist. Please check navigation setup.",
+                position: "top",
+              });
+            }
+          },
         });
       }
     } catch (err) {
@@ -165,26 +191,32 @@ export default function ProductListScreen() {
     try {
       const snap = await getDoc(cartItemRef);
       if (snap.exists()) {
-        await updateDoc(cartItemRef, { quantity: increment(1) });
+        await updateDoc(cartItemRef, {
+          quantity: increment(1),
+          updatedAt: serverTimestamp(),
+        });
         Toast.show({
           type: "info",
           text1: "🛒 Cart Updated",
-          text2: `${product.name} quantity increased.`,
+          text2: `${product.name || product.title || "Unnamed Product"} quantity increased.`,
           position: "top",
         });
       } else {
         await setDoc(cartItemRef, {
           productId: product.id,
-          name: product.name,
-          price: product.price,
-          imageUrl: product.imageUrl,
+          title: product.name || product.title || "Unnamed Product",
+          price: product.price || 0,
+          imageUrl: product.imageUrl || "",
+          description: product.description || "",
+          dimensions: product.dimensions || "",
+          weight: product.weight || "",
           quantity: 1,
           addedAt: serverTimestamp(),
         });
         Toast.show({
           type: "success",
           text1: "🛒 Added to Cart",
-          text2: `${product.name} has been added.`,
+          text2: `${product.name || product.title || "Unnamed Product"} has been added.`,
           position: "top",
         });
       }
@@ -252,13 +284,7 @@ export default function ProductListScreen() {
             <Text style={styles.itemPrice}>₱ {item.price}</Text>
             <TouchableOpacity
               style={styles.addToCartIconButton}
-              onPress={() =>
-                navigation.navigate("ProductScreen", {
-                  product: item,
-                  addToCart,
-                  addToWishlist,
-                })
-              }
+              onPress={() => addToCart(item)}
             >
               <Icon name="cart-plus" size={20} color="#fff" />
             </TouchableOpacity>
@@ -306,13 +332,7 @@ export default function ProductListScreen() {
 
         <TouchableOpacity
           style={styles.listAddToCartButton}
-          onPress={() =>
-            navigation.navigate("ProductScreen", {
-              product: item,
-              addToCart,
-              addToWishlist,
-            })
-          }
+          onPress={() => addToCart(item)}
         >
           <Icon name="cart-plus" size={22} color="#fff" />
         </TouchableOpacity>
@@ -321,16 +341,16 @@ export default function ProductListScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          
           style={styles.backButton}
         >
-          <Icon name="chevron-left" size={30} color="#000" />
+          <Icon name="chevron-left" size={30} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.title}>{categoryName ?? "Products"}</Text>
+        <Text style={styles.headerTitle}>{categoryName || "Products"}</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.viewModeButton}
@@ -346,7 +366,20 @@ export default function ProductListScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.wishlistIconHeader}
-            onPress={() => navigation.navigate("Wishlist")}
+            activeOpacity={0.7}
+            onPress={() => {
+              try {
+                navigation.navigate("Home", { screen: "Wishlist" });
+              } catch (error) {
+                console.error("Navigation to Wishlist failed:", error);
+                Toast.show({
+                  type: "error",
+                  text1: "Navigation Error",
+                  text2: "Unable to navigate to Wishlist. Please check navigation setup.",
+                  position: "top",
+                });
+              }
+            }}
           >
             <Ionicons name="heart-outline" size={26} color="#000" />
           </TouchableOpacity>
@@ -374,16 +407,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    paddingVertical: 15,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E5",
   },
   backButton: { padding: 5 },
-  title: {
+  headerTitle: {
     fontFamily: "LeagueSpartan_700Bold",
-    fontSize: 24,
+    fontSize: 20,
     color: "#000",
-    flex: 1,
-    textAlign: "center",
-    marginHorizontal: 10,
   },
   headerActions: {
     flexDirection: "row",
@@ -395,10 +428,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "rgba(166, 139, 105, 0.1)",
   },
-  wishlistIconHeader: { padding: 5, zIndex: 1 }, // ✅ ensures press works
+  wishlistIconHeader: { padding: 5, zIndex: 1 },
   listContainer: { paddingTop: 15, paddingHorizontal: 10 },
   row: { justifyContent: "space-between", marginBottom: 10 },
-
   // Grid View
   itemContainer: {
     width: (width - 40) / 2,
@@ -454,7 +486,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: 10,
   },
-
   // List View
   listItemContainer: {
     flexDirection: "row",
@@ -514,6 +545,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
