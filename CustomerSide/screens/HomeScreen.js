@@ -6,13 +6,10 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  ImageBackground,
   FlatList,
-  Dimensions,
   ScrollView,
   ActivityIndicator,
-  Platform,
-  Modal,
+  Dimensions,
 } from "react-native";
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -43,10 +40,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChat } from '../Context/ChatContext';
 import FloatingChatbot from '../components/FloatingChatbot';
+import BannerCarousel from '../components/BannerCarousel'; // Import the new component
 
-const { width } = Dimensions.get("window");
-
-// Local placeholder (adjust path if needed)
 const PLACEHOLDER = require("../assets/placeholder.png");
 
 // Helper that guarantees a valid Image source or returns null
@@ -67,7 +62,6 @@ export default function HomeScreen({ route }) {
 
   const { unreadCount } = useChat();
 
-  const [activeBanner, setActiveBanner] = useState(0);
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [banners, setBanners] = useState([]);
@@ -172,6 +166,41 @@ export default function HomeScreen({ route }) {
     });
   };
 
+  // Handle customize button press in banners
+ // Handle customize button press in banners
+const handleCustomizePress = (banner) => {
+  // Handle navigation based on banner link
+  if (banner.link) {
+    switch(banner.link) {
+      case '/customization':
+        navigation.navigate('CustomizationScreen');
+        break;
+      case '/products':
+        navigation.navigate('ProductListScreen');
+        break;
+      case '/':
+        // Already on home screen
+        break;
+      default:
+        // Handle custom URLs or other links
+        if (banner.link.startsWith('http')) {
+          // Open web URL
+          Linking.openURL(banner.link).catch(err => 
+            console.error('Failed to open URL:', err)
+          );
+        }
+        break;
+    }
+  } else {
+    // Default behavior
+    Toast.show({
+      type: "info",
+      text1: "Customization",
+      text2: "Customize your mirror!",
+      position: "top",
+    });
+  }
+};
   // Add to wishlist
   const addToWishlist = async (product) => {
     const user = auth.currentUser;
@@ -322,6 +351,8 @@ export default function HomeScreen({ route }) {
               )}
             </TouchableOpacity>
           </View>
+
+          {/* SEARCH AND FILTER */}
           <View style={styles.searchContainer}>
             <View style={styles.searchInputWrapper}>
               <Icon
@@ -390,58 +421,14 @@ export default function HomeScreen({ route }) {
             </View>
           )}
 
-          {/* BANNERS */}
-          <FlatList
-            data={banners}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
-            onScroll={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x /
-                event.nativeEvent.layoutMeasurement.width
-              );
-              setActiveBanner(index);
-            }}
-            style={styles.bannerList}
-            renderItem={({ item }) => {
-              const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
-              return (
-                <ImageBackground
-                  source={bannerSrc}
-                  style={styles.banner}
-                  imageStyle={styles.bannerImageStyle}
-                  resizeMode="cover"
-                >
-                  <View style={styles.bannerContent}>
-                    <Text style={styles.bannerText}>Design Your Perfect</Text>
-                    <Text style={[styles.bannerText, { color: "#fff" }]}>
-                      Mirror Today
-                    </Text>
-                    <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
-                      Crafted Just for You!
-                    </Text>
-                    <TouchableOpacity style={styles.customizeButton}>
-                      <Text style={styles.customizeButtonText}>
-                        Customize Now
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </ImageBackground>
-              );
-            }}
+          {/* BANNERS - Using the separated component */}
+          <BannerCarousel 
+            banners={banners}
+            placeholder={PLACEHOLDER}
+            onCustomizePress={handleCustomizePress}
           />
-          <View style={styles.bannerDotsContainer}>
-            {banners.map((_, index) => (
-              <View
-                key={index}
-                style={[styles.dot, activeBanner === index && styles.activeDot]}
-              />
-            ))}
-          </View>
 
-          {/* PRODUCTS */}
+          {/* PRODUCTS SECTION */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
               {selectedCategory === "All" ? "Popular" : selectedCategory}
@@ -639,43 +626,6 @@ const styles = StyleSheet.create({
     color: "#A68B69",
     marginLeft: 4,
   },
-  bannerList: { marginTop: 20, paddingHorizontal: 20 },
-  banner: {
-    width: 320,
-    height: 150,
-    marginRight: 15,
-    borderRadius: 15,
-    overflow: "hidden",
-    justifyContent: "center",
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  bannerImageStyle: {
-    borderRadius: 15,
-  },
-  bannerContent: { width: "60%", padding: 10 },
-  bannerText: { fontFamily: "LeagueSpartan_700Bold", fontSize: 18, color: "#000" },
-  bannerSubtext: { fontFamily: "Montserrat_400Regular", fontSize: 12, marginTop: 5, color: "#000" },
-  customizeButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.7)",
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    marginTop: 10,
-    alignSelf: "flex-start",
-  },
-  customizeButtonText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#A68B69",
-  },
-  bannerDotsContainer: { flexDirection: "row", justifyContent: "center", marginTop: 10 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#D9D9D9", marginHorizontal: 4 },
-  activeDot: { backgroundColor: "#A68B69" },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
