@@ -18,8 +18,9 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 // --- Firebase Imports ---
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore'; 
 // Make sure this path is correct for your project
-import { auth } from '../Backend/firebaseConfig';
+import { auth, db } from '../Backend/firebaseConfig';
 
 // Font imports
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
@@ -329,6 +330,24 @@ export default function CreateAccountScreen({ navigation }) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
         await updateProfile(userCredential.user, { displayName: fullName });
+
+        const userId = userCredential.user.uid;
+            const userRef = doc(db, 'user', userId);
+            await setDoc(
+                userRef,
+                {
+                    firstName,
+                    middleInitial: middleInitial || null,
+                    lastName,
+                    email,
+                    phoneNumber,
+                    address,
+                    birthDate,
+                    gender,
+                    createdAt: new Date().toISOString(),
+                },
+                { merge: true } // Prevents overwriting other fields
+            );
 
         // Send email verification
         await sendEmailVerification(userCredential.user);

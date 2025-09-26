@@ -37,84 +37,147 @@ const SettingsScreen = () => {
     const [accountLastName, setAccountLastName] = useState('');
     const [accountPhoneNumber, setAccountPhoneNumber] = useState('');
 
-const saveAccountInfo = async () => {
-    try {
-        const auth = getAuth();
-        const userId = auth.currentUser.uid; // <-- real user ID
-        const userRef = doc(db, "users", userId);
+    const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
 
-        await setDoc(
-            userRef,
-            {
-                email: accountEmail,
-                firstName: accountFirstName,
-                lastName: accountLastName,
-                phoneNumber: accountPhoneNumber,
-            },
-            { merge: true } // prevents overwriting other fields
-        );
 
-        alert("Account info saved successfully!");
-        setShowAccountInfo(false);
-    } catch (error) {
-        console.log("Error saving account info:", error);
-        alert("Failed to save account info.");
-    }
-};
-
+    // Fetch account info when component mounts and user is authenticated
     useEffect(() => {
-    const fetchAccountInfo = async () => {
+        const fetchUserData = async () => {
+            try {
+                const auth = getAuth();
+                const user = auth.currentUser;
+                
+                if (user) {
+                    // Set email from Auth (most reliable source)
+                    setAccountEmail(user.email || "");
+                    
+                    // Fetch additional user data from Firestore
+                    const userId = user.uid;
+                    const userRef = doc(db, "user", userId);
+                    const userSnap = await getDoc(userRef);
+
+                    if (userSnap.exists()) {
+                        const data = userSnap.data();
+                        setAccountFirstName(data.firstName || "Not set");
+                        setAccountLastName(data.lastName || "Not set");
+                        setAccountPhoneNumber(data.phoneNumber || "Not set");
+                    } else {
+                        // Set default values if no data exists
+                        setAccountFirstName("Not set");
+                        setAccountLastName("Not set");
+                        setAccountPhoneNumber("Not set");
+                    }
+                }
+            } catch (error) {
+                console.log("Error fetching user data:", error);
+                // Set default values on error
+                setAccountFirstName("Error loading");
+                setAccountLastName("Error loading");
+                setAccountPhoneNumber("Error loading");
+            }
+        };
+
+        fetchUserData();
+    }, []);
+
+    // Also fetch data when account info modal opens to ensure fresh data
+    useEffect(() => {
+        const fetchAccountInfo = async () => {
+            if (showAccountInfo) {
+                try {
+                    const auth = getAuth();
+                    const user = auth.currentUser;
+                    
+                    if (user) {
+                        // Always get email from Auth
+                        setAccountEmail(user.email || "");
+                        
+                        // Fetch from Firestore for other data
+                        const userId = user.uid;
+                        const userRef = doc(db, "user", userId);
+                        const userSnap = await getDoc(userRef);
+
+                        if (userSnap.exists()) {
+                            const data = userSnap.data();
+                            setAccountFirstName(data.firstName || "Not set");
+                            setAccountLastName(data.lastName || "Not set");
+                            setAccountPhoneNumber(data.phoneNumber || "Not set");
+                        } else {
+                            setAccountFirstName("Not set");
+                            setAccountLastName("Not set");
+                            setAccountPhoneNumber("Not set");
+                        }
+                    }
+                } catch (error) {
+                    console.log("Error fetching account info:", error);
+                }
+            }
+        };
+
+        fetchAccountInfo();
+    }, [showAccountInfo]);
+
+    const saveAccountInfo = async () => {
         try {
             const auth = getAuth();
-            const userId = auth.currentUser.uid; // <-- get real user ID
-            const userRef = doc(db, "users", userId);
-            const userSnap = await getDoc(userRef);
-
-            if (userSnap.exists()) {
-                const data = userSnap.data();
-                setAccountEmail(data.email || "");
-                setAccountFirstName(data.firstName || "");
-                setAccountLastName(data.lastName || "");
-                setAccountPhoneNumber(data.phoneNumber || "");
+            const user = auth.currentUser;
+            
+            if (!user) {
+                alert("No user logged in.");
+                return;
             }
+
+            const userId = user.uid;
+            const userRef = doc(db, "user", userId);
+
+            await setDoc(
+                userRef,
+                {
+                    email: accountEmail,
+                    firstName: accountFirstName,
+                    lastName: accountLastName,
+                    phoneNumber: accountPhoneNumber,
+                },
+                { merge: true }
+            );
+
+            alert("Account info saved successfully!");
+            setShowAccountInfo(false);
         } catch (error) {
-            console.log("Error fetching account info:", error);
+            console.log("Error saving account info:", error);
+            alert("Failed to save account info.");
         }
     };
 
-    if (showAccountInfo) fetchAccountInfo();
-}, [showAccountInfo]);
+    const deleteAccount = async () => {
+        try {
+            const auth = getAuth();
+            const user = auth.currentUser;
 
-const deleteAccount = async () => {
-    try {
-        const auth = getAuth();
-        const user = auth.currentUser;
+            if (!user) {
+                alert("No user logged in.");
+                return;
+            }
 
-        if (!user) {
-            alert("No user logged in.");
-            return;
+            const userId = user.uid;
+
+            // Delete Firestore document
+            await deleteDoc(doc(db, "user", userId));
+
+            // Delete Firebase Auth account
+            await deleteUser(user);
+
+            alert("Account deleted successfully!");
+            navigation.reset({
+                index: 0,
+                routes: [{ name: "SignIn" }],
+            });
+
+        } catch (error) {
+            console.log("Error deleting account:", error);
+            alert("Failed to delete account. You may need to re-login and try again.");
         }
-
-        const userId = user.uid;
-
-        // Delete Firestore document
-        await deleteDoc(doc(db, "users", userId));
-
-        // Delete Firebase Auth account
-        await deleteUser(user);
-
-        alert("Account deleted successfully!");
-        // Optionally navigate back to login or splash screen
-        navigation.reset({
-            index: 0,
-            routes: [{ name: "SignIn" }], // replace with your login screen
-        });
-
-    } catch (error) {
-        console.log("Error deleting account:", error);
-        alert("Failed to delete account. You may need to re-login and try again.");
-    }
-};
+    };
 
     // New states for the add card form
     const [cardName, setCardName] = useState('');
@@ -449,6 +512,78 @@ const deleteAccount = async () => {
             cardInfoInputGroup: {
                 width: '48%',
             },
+            // Delete Confirmation Modal styles
+            confirmModalOverlay: {
+                flex: 1,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                justifyContent: 'center',
+                alignItems: 'center',
+            },
+            confirmModalContainer: {
+                backgroundColor: theme.backgroundSecondary,
+                marginHorizontal: 30,
+                borderRadius: 16,
+                padding: 24,
+                alignItems: 'center',
+                ...Platform.select({
+                    ios: {
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 20,
+                    },
+                    android: {
+                        elevation: 10,
+                    },
+                }),
+            },
+            confirmModalIcon: {
+                marginBottom: 16,
+            },
+            confirmModalTitle: {
+                fontFamily: 'Montserrat_600SemiBold',
+                fontSize: 20,
+                color: theme.textPrimary,
+                textAlign: 'center',
+                marginBottom: 8,
+            },
+            confirmModalMessage: {
+                fontFamily: 'Montserrat_400Regular',
+                fontSize: 15,
+                color: theme.textSecondary,
+                textAlign: 'center',
+                lineHeight: 22,
+                marginBottom: 24,
+            },
+            confirmModalButtons: {
+                flexDirection: 'row',
+                gap: 12,
+                width: '100%',
+            },
+            confirmModalButton: {
+                flex: 1,
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: 'center',
+            },
+            confirmModalCancelButton: {
+                backgroundColor: theme.backgroundPrimary,
+                borderWidth: 1,
+                borderColor: theme.border,
+            },
+            confirmModalDeleteButton: {
+                backgroundColor: theme.deleteButtonText,
+            },
+            confirmModalCancelText: {
+                fontFamily: 'Montserrat_600SemiBold',
+                fontSize: 16,
+                color: theme.textPrimary,
+            },
+            confirmModalDeleteText: {
+                fontFamily: 'Montserrat_600SemiBold',
+                fontSize: 16,
+                color: '#fff',
+            },
         });
     };
 
@@ -499,7 +634,10 @@ const deleteAccount = async () => {
                         <Text style={themedStyles.deleteDescription}>
                             Your account will be permanently removed from the application.
                         </Text>
-                        <TouchableOpacity style={themedStyles.deleteButton} onPress={deleteAccount}>
+                        <TouchableOpacity 
+                            style={themedStyles.deleteButton} 
+                            onPress={() => setShowDeleteConfirmModal(true)}
+                        >
                             <Text style={themedStyles.deleteButtonText}>Delete Account</Text>
                         </TouchableOpacity>
                     </View>
@@ -672,6 +810,48 @@ const deleteAccount = async () => {
                         </View>
                     </View>
                 </ScrollView>
+
+                {/* Delete Account Confirmation Modal */}
+                <Modal
+                    animationType="fade"
+                    transparent={true}
+                    visible={showDeleteConfirmModal}
+                    onRequestClose={() => setShowDeleteConfirmModal(false)}
+                >
+                    <View style={themedStyles.confirmModalOverlay}>
+                        <View style={themedStyles.confirmModalContainer}>
+                            <Icon 
+                                name="alert-circle-outline" 
+                                size={48} 
+                                color={themedStyles.deleteButtonText} 
+                                style={themedStyles.confirmModalIcon}
+                            />
+                            <Text style={themedStyles.confirmModalTitle}>
+                                Delete Account?
+                            </Text>
+                            <Text style={themedStyles.confirmModalMessage}>
+                                Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently removed.
+                            </Text>
+                            <View style={themedStyles.confirmModalButtons}>
+                                <TouchableOpacity 
+                                    style={[themedStyles.confirmModalButton, themedStyles.confirmModalCancelButton]}
+                                    onPress={() => setShowDeleteConfirmModal(false)}
+                                >
+                                    <Text style={themedStyles.confirmModalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                    style={[themedStyles.confirmModalButton, themedStyles.confirmModalDeleteButton]}
+                                    onPress={() => {
+                                        setShowDeleteConfirmModal(false);
+                                        deleteAccount();
+                                    }}
+                                >
+                                    <Text style={themedStyles.confirmModalDeleteText}>Delete</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
 
                 {/* Account Information Modal */}
                 <Modal
