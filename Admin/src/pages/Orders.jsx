@@ -1,12 +1,13 @@
+// Orders.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle, MapPin } from "lucide-react";
 
 import { db } from "../../Backend/firebaseConfig.js";
-import { collection, getDocs, doc, updateDoc, getDoc, query, orderBy, limit, where } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, getDocs, query, orderBy, limit, where } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 
-// Helper function to format currency
+// NEW: Helper to format currency (already in your code, but needed for email template in backend)
 export const formatCurrency = (amount) => {
     if (typeof amount !== 'number') {
         amount = parseFloat(amount);
@@ -121,7 +122,6 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
                         {option.charAt(0).toUpperCase() + option.slice(1)}
                     </option>
                 ))}
-                {/* Include current status even if not in available options to show it */}
                 {!availableOptions.includes(status) && (
                     <option value={status} disabled>
                         {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -181,7 +181,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
         try {
             let date;
             if (dateStr && typeof dateStr === 'object' && dateStr.seconds) {
-                // Handle Firebase Timestamp
                 date = new Date(dateStr.seconds * 1000);
             } else if (dateStr && dateStr.includes('/')) {
                 const [month, day, year] = dateStr.split('/');
@@ -213,12 +212,11 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
-                {/* Header */}
                 <div className="p-6 border-b border-gray-200 bg-[#F8F5F2]">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-[#A68B69] rounded-xl flex items-center justify-center shadow-lg">
-                                 className="w-6 h-6 text-white" />
+                                <Package className="w-6 h-6 text-white" />
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
@@ -232,7 +230,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                 </div>
 
                 <div className="p-6 space-y-8">
-                    {/* Quick Actions */}
                     <div className="flex flex-wrap gap-3">
                         <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
                             <MessageCircle className="w-4 h-4" />
@@ -240,7 +237,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </button>
                     </div>
 
-                    {/* Order Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <Package className="w-5 h-5 text-[#A68B69]" />
@@ -266,13 +262,12 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                 <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} currentStatus={order.status} />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
-                                                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
+                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
                                 <EnhancedPaymentBadge payment={order.payment || 'pending'} orderId={order.id} onUpdate={onUpdatePayment} />
                             </div>
                         </div>
                     </div>
 
-                    {/* Customer Contact Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <User className="w-5 h-5 text-[#A68B69]" />
@@ -317,9 +312,8 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     </div>
 
-                    {/* Product Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
-                                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <Package className="w-5 h-5 text-[#A68B69]" />
                             Product Details
                         </h3>
@@ -387,7 +381,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     </div>
 
-                    {/* Payment Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <CreditCard className="w-5 h-5 text-[#A68B69]" />
@@ -463,7 +456,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     </div>
 
-                    {/* Payment Details Card - Show reference code and bank type */}
                     {(order.payment === 'partial' || order.payment === 'paid' || order.referenceNumber || order.bankDetails) && (
                         <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -484,7 +476,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                         {order.bankDetails?.accountNumber && (
                                             <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
                                                 <div className="flex justify-between items-center mb-2">
-                                                                                                        <span className="text-blue-800 font-medium">Account Number</span>
+                                                    <span className="text-blue-800 font-medium">Account Number</span>
                                                 </div>
                                                 <p className="text-lg font-bold text-blue-900">
                                                     {order.bankDetails.accountNumber}
@@ -526,7 +518,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     )}
 
-                    {/* Delivery Address Card */}
                     {order.deliveryAddress && (
                         <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -571,7 +562,6 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         </div>
                     )}
 
-                    {/* Order Summary Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <TrendingUp className="w-5 h-5 text-[#A68B69]" />
@@ -584,7 +574,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     <span className="font-semibold text-gray-900">{formatCurrency(totalAmount)}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                                                                        <span className="text-gray-600 font-medium">Shipping Fee</span>
+                                    <span className="text-gray-600 font-medium">Shipping Fee</span>
                                     <span className="font-semibold text-gray-900">
                                         {order.shippingFee ? formatCurrency(order.shippingFee) : 'FREE'}
                                     </span>
@@ -634,6 +624,11 @@ const getCustomerName = (order) => {
     return 'N/A';
 };
 
+// NEW: Helper to extract customer email from order
+const getCustomerEmail = (order) => {
+    return order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || '';
+};
+
 // Helper function to extract product name from order
 const getProductName = (order) => {
     if (order.items && order.items.length > 0) {
@@ -668,25 +663,22 @@ const getOrderDate = (order) => {
 
 // Helper function to check if an order is customized
 const isCustomizedOrder = (order) => {
-    // Check for custom fields that indicate a customized order
     return order.isCustomized || 
            order.customizationDetails || 
            order.customOptions || 
-           (order.items && order.items.some(item => item.isCustomized || item.size)); // Check for size as customization indicator
+           (order.items && order.items.some(item => item.isCustomized || item.size));
 };
 
 // Helper function to get timestamp from order for sorting
 const getOrderTimestamp = (order) => {
-    // Try to get a timestamp from various possible fields
     if (order.createdAt && typeof order.createdAt === 'object' && order.createdAt.seconds) {
-        return order.createdAt.seconds * 1000; // Convert Firebase timestamp to milliseconds
+        return order.createdAt.seconds * 1000;
     }
     if (order.timestamp && typeof order.timestamp === 'object' && order.timestamp.seconds) {
         return order.timestamp.seconds * 1000;
     }
     if (order.orderDate) {
         try {
-            // Try to parse date string
             const date = new Date(order.orderDate);
             return isNaN(date.getTime()) ? 0 : date.getTime();
         } catch (error) {
@@ -701,7 +693,7 @@ const getOrderTimestamp = (order) => {
             return 0;
         }
     }
-    return 0; // Default if no date can be found
+    return 0;
 };
 
 // Main Orders Component
@@ -713,24 +705,20 @@ export default function Orders() {
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [activeTab, setActiveTab] = useState("all"); // "all" or "customized"
+    const [activeTab, setActiveTab] = useState("all");
     const ordersPerPage = 5;
     
-    // State for confirmation modals
     const [showStatusConfirm, setShowStatusConfirm] = useState(false);
     const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
-    const [pendingUpdate, setPendingUpdate] = useState({ type: '', orderId: '', newValue: '' });
+    const [pendingUpdate, setPendingUpdate] = useState({ type: '', orderId: '', newValue: '', currentValue: '' });
 
     // Enhanced date formatting function for table display
     const formatOrderDate = useCallback((dateStr) => {
         try {
             let date;
-            
-            // Handle Firebase Timestamp objects
             if (dateStr && typeof dateStr === 'object' && dateStr.seconds) {
                 date = new Date(dateStr.seconds * 1000);
             } 
-            // Handle string dates
             else if (dateStr && dateStr.includes('/')) {
                 const [month, day, year] = dateStr.split('/');
                 date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
@@ -757,77 +745,52 @@ export default function Orders() {
         }
     }, []);
 
-    // Function to fetch orders from Firestore
-    const fetchOrders = useCallback(async () => {
+    // Function to fetch orders from Firestore with real-time updates
+    const fetchOrders = useCallback(() => {
         setLoading(true);
-        try {
-            const ordersCollectionRef = collection(db, "orders");
-            const ordersSnapshot = await getDocs(ordersCollectionRef);
-            const ordersList = ordersSnapshot.docs.map(doc => ({
+        const ordersCollectionRef = collection(db, "orders");
+        const unsubscribe = onSnapshot(ordersCollectionRef, (snapshot) => {
+            const ordersList = snapshot.docs.map(doc => ({
                 id: doc.id,
-                displayId: generateDisplayOrderId(), // Generate a display-only ID
+                displayId: generateDisplayOrderId(),
                 ...doc.data()
             }));
             
-            // Sort orders: newest first, but delivered orders at the end
             const sortedOrders = ordersList.sort((a, b) => {
-                // Get timestamps for both orders
                 const aTimestamp = getOrderTimestamp(a);
                 const bTimestamp = getOrderTimestamp(b);
                 
-                // If both are delivered or both are not delivered, sort by timestamp (newest first)
                 if ((a.status === 'delivered') === (b.status === 'delivered')) {
-                    return bTimestamp - aTimestamp; // Newest first
+                    return bTimestamp - aTimestamp;
                 }
                 
-                // If only one is delivered, put it at the end
                 return a.status === 'delivered' ? 1 : -1;
             });
             
             setOrders(sortedOrders);
+            setLoading(false);
             
-            // Debug: Log the first order to see its structure
             if (ordersList.length > 0) {
                 console.log("First order structure:", ordersList[0]);
             }
-        } catch (error) {
+        }, (error) => {
             console.error("Error fetching orders:", error);
-        } finally {
             setLoading(false);
-        }
-    }, []);
+            alert("Failed to fetch orders. Please try again.");
+        });
 
-    // Function to fetch detailed order data when viewing order details
-    const fetchOrderDetails = useCallback(async (orderId) => {
-        try {
-            const orderRef = doc(db, "orders", orderId);
-            const orderDoc = await getDoc(orderRef);
-            
-            if (orderDoc.exists()) {
-                const orderData = {
-                    id: orderDoc.id,
-                    displayId: generateDisplayOrderId(), // Generate a display-only ID
-                    ...orderDoc.data()
-                };
-                setSelectedOrder(orderData);
-                setShowOrderDetail(true);
-            } else {
-                console.error("Order not found");
-            }
-        } catch (error) {
-            console.error("Error fetching order details:", error);
-        }
+        return unsubscribe;
     }, []);
 
     // Fetch data on component mount
     useEffect(() => {
-        fetchOrders();
+        const unsubscribe = fetchOrders();
+        return () => unsubscribe();
     }, [fetchOrders]);
 
     // Memoized calculations to avoid re-calculating on every render
     const filteredOrders = useMemo(() => {
         return orders.filter((order) => {
-            // Filter by tab (all orders or customized orders)
             if (activeTab === "customized" && !isCustomizedOrder(order)) {
                 return false;
             }
@@ -846,7 +809,6 @@ export default function Orders() {
                 getTotalAmount(order).toString().toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (order.referenceNumber && order.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase()));
 
-            // Fixed: Case-insensitive status matching
             const matchesStatus = statusFilter === "All Status" || 
                 (order.status && order.status.toLowerCase() === statusFilter.toLowerCase());
             
@@ -859,7 +821,7 @@ export default function Orders() {
     const startIndex = (currentPage - 1) * ordersPerPage;
     const currentOrders = filteredOrders.slice(startIndex, startIndex + ordersPerPage);
 
-    // Calculate order counts and revenue - FIXED: Added null checks and case-insensitive comparison
+    // Calculate order counts and revenue
     const orderCounts = useMemo(() => ({
         total: orders.length,
         pending: orders.filter((o) => o.status && o.status.toLowerCase() === "pending").length,
@@ -870,8 +832,8 @@ export default function Orders() {
     }), [orders]);
 
     const handleViewOrder = (order) => {
-        // Fetch detailed order data when viewing order details
-        fetchOrderDetails(order.id);
+        setSelectedOrder(order);
+        setShowOrderDetail(true);
     };
 
     // Function to handle status update with confirmation
@@ -898,45 +860,94 @@ export default function Orders() {
         setShowPaymentConfirm(true);
     };
 
+    // NEW: Function to send email update via backend
+    const sendOrderUpdateEmail = async (order) => {
+        const customerEmail = getCustomerEmail(order);
+        if (!customerEmail) {
+            console.warn("No customer email found for order:", order.id);
+            return;  // Skip if no email
+        }
+
+        const emailData = {
+            id: order.id,
+            displayId: order.displayId,
+            customerName: getCustomerName(order),
+            customerEmail: customerEmail,
+            status: order.status,
+            payment: order.payment || 'pending',
+            totalAmount: getTotalAmount(order),
+        };
+
+        try {
+            const response = await fetch('http://localhost:3001/api/send-order-update-email', {  // Change to your production URL later
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(emailData),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send email');
+            }
+            console.log('Email sent successfully');
+        } catch (error) {
+            console.error('Error sending email:', error);
+            // Optional: alert("Status updated, but email failed to send.");
+        }
+    };
+
     // Function to update order status in Firestore
     const handleUpdateOrderStatus = async (orderId, newStatus) => {
         try {
-            const orderRef = doc(db, "orders", orderId);
-            await updateDoc(orderRef, { status: newStatus });
-            
-            // Update local state and re-sort orders
-            setOrders(prevOrders => {
-                const updatedOrders = prevOrders.map(order => 
-                    order.id === orderId ? { ...order, status: newStatus } : order
-                );
-                
-                // Re-sort orders after status change
-                return updatedOrders.sort((a, b) => {
-                    const aTimestamp = getOrderTimestamp(a);
-                    const bTimestamp = getOrderTimestamp(b);
-                    
-                    if ((a.status === 'delivered') === (b.status === 'delivered')) {
-                        return bTimestamp - aTimestamp;
+            const order = orders.find(o => o.id === orderId);
+            if (newStatus === "processing" && order.status !== "processing") {
+                let items = [];
+                if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+                    items = order.items;
+                } else {
+                    items = [{
+                        name: order.product || order.productName || 'Unknown Product',
+                        quantity: parseInt(order.quantity || order.items?.[0]?.quantity || 1)
+                    }];
+                }
+
+                for (const item of items) {
+                    if (!item.name || item.quantity <= 0) continue;
+
+                    const productsQuery = query(collection(db, "products"), where("name", "==", item.name));
+                    const querySnapshot = await getDocs(productsQuery);
+
+                    if (!querySnapshot.empty) {
+                        const productDoc = querySnapshot.docs[0];
+                        const productData = productDoc.data();
+                        const currentInventory = productData.inventory || 0;
+                        const qty = item.quantity || 1;
+
+                        if (currentInventory < qty) {
+                            alert(`Insufficient stock for ${item.name}. Available: ${currentInventory}, Required: ${qty}`);
+                            return;
+                        }
+
+                        await updateDoc(productDoc.ref, {
+                            inventory: currentInventory - qty
+                        });
+                    } else {
+                        console.warn(`No product found with name: ${item.name}`);
                     }
-                    
-                    return a.status === 'delivered' ? 1 : -1;
-                });
-            });
-            
-            setShowStatusConfirm(false);
-            
-            // Refresh the selected order if it's the one being updated
-            if (selectedOrder && selectedOrder.id === orderId) {
-                const updatedOrderRef = doc(db, "orders", orderId);
-                const updatedOrderDoc = await getDoc(updatedOrderRef);
-                if (updatedOrderDoc.exists()) {
-                    setSelectedOrder({
-                        id: updatedOrderDoc.id,
-                        displayId: selectedOrder.displayId, // Preserve the display ID
-                        ...updatedOrderDoc.data()
-                    });
                 }
             }
+
+            const orderRef = doc(db, "orders", orderId);
+            await updateDoc(orderRef, { status: newStatus });
+            alert(`Order status successfully updated to "${newStatus}"`);
+
+            // NEW: Find the updated order and send email
+            const updatedOrder = orders.find(o => o.id === orderId);
+            if (updatedOrder) {
+                updatedOrder.status = newStatus;  // Update local for email
+                await sendOrderUpdateEmail(updatedOrder);
+            }
+
+            setShowStatusConfirm(false);
         } catch (error) {
             console.error("Error updating order status:", error);
             alert("Failed to update order status. Please try again.");
@@ -948,21 +959,16 @@ export default function Orders() {
         try {
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { payment: newPaymentStatus });
-            setOrders(prevOrders => prevOrders.map(order => order.id === orderId ? { ...order, payment: newPaymentStatus } : order));
-            setShowPaymentConfirm(false);
-            
-            // Refresh the selected order if it's the one being updated
-            if (selectedOrder && selectedOrder.id === orderId) {
-                const updatedOrderRef = doc(db, "orders", orderId);
-                const updatedOrderDoc = await getDoc(updatedOrderRef);
-                if (updatedOrderDoc.exists()) {
-                    setSelectedOrder({
-                        id: updatedOrderDoc.id,
-                        displayId: selectedOrder.displayId, // Preserve the display ID
-                        ...updatedOrderDoc.data()
-                    });
-                }
+            alert(`Payment status successfully updated to "${newPaymentStatus}"`);
+
+            // NEW: Find the updated order and send email
+            const updatedOrder = orders.find(o => o.id === orderId);
+            if (updatedOrder) {
+                updatedOrder.payment = newPaymentStatus;  // Update local for email
+                await sendOrderUpdateEmail(updatedOrder);
             }
+
+            setShowPaymentConfirm(false);
         } catch (error) {
             console.error("Error updating payment status:", error);
             alert("Failed to update payment status. Please try again.");
@@ -976,7 +982,6 @@ export default function Orders() {
             return;
         }
 
-        // Flatten orders for Excel
         const exportData = filteredOrders.map(order => ({
             OrderID: order.displayId || order.id,
             CustomerName: getCustomerName(order),
@@ -995,7 +1000,7 @@ export default function Orders() {
             Customized: isCustomizedOrder(order) ? "Yes" : "No",
         }));
 
-                const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
 
@@ -1018,7 +1023,6 @@ export default function Orders() {
         <div className="min-h-screen bg-[#F8F5F2]">
             <Header />
             <main className="p-6 max-w-7xl mx-auto">
-                {/* Enhanced Page Header */}
                 <div className="mb-8">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
                         <div className="mb-6 lg:mb-0">
@@ -1029,7 +1033,6 @@ export default function Orders() {
                         </div>
                     </div>
 
-                    {/* Tab Navigation */}
                     <div className="flex border-b border-gray-200 mb-6">
                         <button
                             className={`py-3 px-6 font-medium text-sm rounded-t-lg transition-all duration-200 ${activeTab === "all" ? "bg-white text-[#A68B69] border-t-2 border-l-2 border-r-2 border-[#A68B69]" : "text-gray-500 hover:text-gray-700"}`}
@@ -1045,7 +1048,6 @@ export default function Orders() {
                         </button>
                     </div>
 
-                    {/* Enhanced Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                         <div
                             className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "All Status" ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20" : "border-gray-200 hover:border-[#A68B69]/50"}`}
@@ -1106,7 +1108,7 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                                                                                <Package className="w-6 h-6 text-white" />
+                                        <Package className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Shipped" ? "bg-blue-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
@@ -1123,7 +1125,7 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                                                                                <CheckCircle className="w-6 h-6 text-white" />
+                                        <CheckCircle className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Delivered" ? "bg-green-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
@@ -1134,7 +1136,6 @@ export default function Orders() {
                     </div>
                 </div>
 
-                {/* Search and Filter Section */}
                 <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-200 mb-8">
                     <div className="flex flex-col lg:flex-row gap-4 items-center">
                         <div className="relative flex-1 w-full lg:max-w-md">
@@ -1173,7 +1174,6 @@ export default function Orders() {
                     </div>
                 </div>
 
-                {/* Orders Table */}
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm text-gray-600">
@@ -1199,7 +1199,6 @@ export default function Orders() {
                                             <td className="p-4">{getProductName(order)}</td>
                                             <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
                                             <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
-                                            
                                             <td className="p-4">
                                                 <EnhancedStatusBadge 
                                                     status={order.status || 'pending'} 
@@ -1208,7 +1207,6 @@ export default function Orders() {
                                                     currentStatus={order.status || 'pending'}
                                                 />
                                             </td>
-                                           
                                             <td className="p-4">
                                                 <EnhancedPaymentBadge 
                                                     payment={order.payment || 'pending'} 
@@ -1216,13 +1214,11 @@ export default function Orders() {
                                                     onUpdate={handlePaymentUpdateRequest}
                                                 />
                                             </td>
-                                           
                                             <td className="p-4">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${isCustomizedOrder(order) ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
                                                     {isCustomizedOrder(order) ? 'Customized' : 'Standard'}
                                                 </span>
                                             </td>
-                                           
                                             <td className="p-4">
                                                 <button
                                                     onClick={() => handleViewOrder(order)}
@@ -1244,7 +1240,6 @@ export default function Orders() {
                         </table>
                     </div>
 
-                    {/* Pagination Controls */}
                     {filteredOrders.length > ordersPerPage && (
                         <div className="p-4 flex justify-between items-center border-t border-gray-200">
                             <div className="text-sm text-gray-600">
@@ -1280,7 +1275,6 @@ export default function Orders() {
                 </div>
             </main>
             
-            {/* Order Detail Modal */}
             {showOrderDetail && selectedOrder && (
                 <OrderDetailModal
                     order={selectedOrder}
@@ -1291,7 +1285,6 @@ export default function Orders() {
                 />
             )}
             
-            {/* Status Update Confirmation Modal */}
             <ConfirmationModal
                 isOpen={showStatusConfirm}
                 onClose={() => setShowStatusConfirm(false)}
@@ -1302,7 +1295,6 @@ export default function Orders() {
                 cancelText="Cancel"
             />
             
-            {/* Payment Status Update Confirmation Modal */}
             <ConfirmationModal
                 isOpen={showPaymentConfirm}
                 onClose={() => setShowPaymentConfirm(false)}

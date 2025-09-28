@@ -30,9 +30,26 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  addDoc,
 } from "firebase/firestore";
 
 const REVIEWS_PER_PAGE = 10;
+
+// Notification Service (reused from dashboard)
+const notificationService = {
+  async createNotification(notificationData) {
+    try {
+      await addDoc(collection(db, "notifications"), {
+        ...notificationData,
+        read: false,
+        createdAt: serverTimestamp(),
+        priority: notificationData.priority || 'normal'
+      });
+    } catch (error) {
+      console.error("Error creating notification:", error);
+    }
+  },
+};
 
 function Reviews() {
   const [reviews, setReviews] = useState([]);
@@ -45,7 +62,7 @@ function Reviews() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    const q = query(collection(db, "reviews"), orderBy("date", "desc"));
+    const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -58,8 +75,8 @@ function Reviews() {
             rating: data.rating || 0,
             comment: data.comment || "",
             date:
-              data.date && typeof data.date.toDate === "function"
-                ? data.date.toDate()
+              data.createdAt && typeof data.createdAt.toDate === "function"
+                ? data.createdAt.toDate()
                 : new Date(),
             isVisible: data.isVisible !== false,
             avatar: data.avatar || "US",
@@ -70,6 +87,7 @@ function Reviews() {
                 ? data.createdAt.toDate()
                 : new Date(),
             status: data.status || "approved",
+            adminNotified: data.adminNotified || false,
           });
         });
         setReviews(reviewList);
@@ -82,7 +100,34 @@ function Reviews() {
       }
     );
 
-    return () => unsubscribe();
+    // Listen for new reviews to trigger notifications
+    const reviewsQuery = query(
+      collection(db, "reviews"),
+      orderBy("createdAt", "desc")
+    );
+    const reviewsUnsubscribe = onSnapshot(reviewsQuery, (snapshot) => {
+      snapshot.docChanges().forEach(async (change) => {
+        if (change.type === "added") {
+          const reviewData = change.doc.data();
+          if (!reviewData.adminNotified) {
+            await notificationService.createNotification({
+              title: "New Review",
+              message: `New ${reviewData.rating}-star review received for ${reviewData.productInfo?.name || "a product"}.`,
+              type: "review",
+              priority: "normal"
+            });
+            await updateDoc(doc(db, "reviews", change.doc.id), { adminNotified: true });
+          }
+        }
+      });
+    }, (error) => {
+      console.error("Error in reviews listener:", error);
+    });
+
+    return () => {
+      unsubscribe();
+      reviewsUnsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -118,7 +163,7 @@ function Reviews() {
           return b.rating - a.rating;
         case "date":
         default:
-          return b.date - a.date;
+          return b.createdAt - a.createdAt;
       }
     });
 
@@ -225,44 +270,28 @@ function Reviews() {
     const maxVisiblePages = 5;
     
     if (pageCount <= maxVisiblePages) {
-      // Show all pages if total pages is less than max visible
       for (let i = 1; i <= pageCount; i++) {
         pages.push(i);
       }
     } else {
-      // Always include first page
       pages.push(1);
-      
-      // Calculate start and end of visible page range
       let startPage = Math.max(2, currentPage - 1);
       let endPage = Math.min(pageCount - 1, currentPage + 1);
-      
-      // Adjust if we're near the beginning
       if (currentPage <= 3) {
         endPage = 4;
       }
-      
-      // Adjust if we're near the end
       if (currentPage >= pageCount - 2) {
         startPage = pageCount - 3;
       }
-      
-      // Add ellipsis after first page if needed
       if (startPage > 2) {
         pages.push("...");
       }
-      
-      // Add middle pages
       for (let i = startPage; i <= endPage; i++) {
         pages.push(i);
       }
-      
-      // Add ellipsis before last page if needed
       if (endPage < pageCount - 1) {
         pages.push("...");
       }
-      
-      // Always include last page
       pages.push(pageCount);
     }
     
@@ -522,10 +551,10 @@ function Reviews() {
                         <h3 className="font-bold text-gray-900">{review.userName}</h3>
                         <div className="flex items-center gap-1 text-xs text-[#CAC8C5]">
                           <Calendar size={12} />
-                          <span>{formatDate(review.date)}</span>
+                          <span>{formatDate(review.createdAt)}</span>
                           <span>•</span>
                           <Clock size={12} />
-                          <span>{formatTime(review.date)}</span>
+                          <span>{formatTime(review.createdAt)}</span>
                         </div>
                       </div>
                     </div>

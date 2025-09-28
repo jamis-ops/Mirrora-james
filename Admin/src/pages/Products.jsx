@@ -1,5 +1,4 @@
-// src/pages/Products.jsx
-
+// Products.jsx
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Plus, Pencil, Trash, X, Image as ImageIcon, ArrowLeft, Package, Hash, ChevronLeft, ChevronRight, FileText, Ruler } from "lucide-react";

@@ -191,7 +191,7 @@ export default function StackNavigator() {
         <Stack.Screen
           name="OrderConfirmationScreen"
           component={OrderConfirmationScreen}
-          options={{ title: 'Order Confirmation' }}
+          options={{ headerShown: false }} 
         />
         <Stack.Screen
           name="MyOrderScreen"
