@@ -109,7 +109,7 @@ export default function HomeScreen({ route }) {
     Montserrat_600SemiBold,
   });
 
-  // Fetch banners
+  // Fetch banners - only active banners, limited to 3
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -118,7 +118,13 @@ export default function HomeScreen({ route }) {
           id: d.id,
           ...d.data(),
         }));
-        setBanners(bannerList);
+        
+        // Filter only active banners and limit to 3
+        const activeBanners = bannerList
+          .filter(banner => banner.active !== false)
+          .slice(0, 3);
+        
+        setBanners(activeBanners);
       } catch (error) {
         console.error("Error fetching banners:", error);
       }
@@ -159,6 +165,64 @@ export default function HomeScreen({ route }) {
       setFilteredProducts(filtered);
     }
   }, [selectedCategory, products]);
+
+  // Handle banner click - FIXED NAVIGATION ISSUES
+  const handleBannerPress = (banner) => {
+    if (banner.link) {
+      // Handle different link types
+      switch (banner.link) {
+        case '/CustomizationScreen':
+        case '/customization': // Handle both uppercase and lowercase
+          navigation.navigate("CustomizationScreen");
+          break;
+        case '/products':
+          navigation.navigate("ProductListScreen");
+          break;
+        case '/cart':
+          navigation.navigate("CartScreen");
+          break;
+        case '/':
+          // Scroll to top or refresh home screen
+          break;
+        default:
+          // Handle custom URLs or other screens
+          if (banner.link.startsWith('/')) {
+            // If it's a route path, navigate to it
+            const routeName = banner.link.substring(1); // Remove the leading slash
+            
+            // Map common route names to actual screen names
+            const routeMap = {
+              'customization': 'CustomizationScreen',
+              'products': 'ProductListScreen',
+              'cart': 'CartScreen',
+              'messages': 'MessageScreen',
+              'orders': 'MyOrderScreen',
+              'settings': 'SettingScreen',
+            };
+            
+            const actualScreenName = routeMap[routeName] || routeName;
+            
+            // Check if the screen exists before navigating
+            if (routeMap[routeName] || routeName === 'CustomizationScreen') {
+              navigation.navigate(actualScreenName);
+            } else {
+              // Fallback to CustomizationScreen for unknown routes
+              console.log("Unknown route, falling back to CustomizationScreen:", routeName);
+              navigation.navigate("CustomizationScreen");
+            }
+          } else {
+            // If it's a full URL, you might want to handle it differently
+            console.log("External URL:", banner.link);
+            // Default fallback to CustomizationScreen
+            navigation.navigate("CustomizationScreen");
+          }
+          break;
+      }
+    } else {
+      // Default behavior - navigate to CustomizationScreen
+      navigation.navigate("CustomizationScreen");
+    }
+  };
 
   // Handle category selection
   const handleCategorySelect = (category) => {
@@ -390,56 +454,101 @@ export default function HomeScreen({ route }) {
             </View>
           )}
 
-          {/* BANNERS */}
-          <FlatList
-            data={banners}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
-            onScroll={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x /
-                event.nativeEvent.layoutMeasurement.width
-              );
-              setActiveBanner(index);
-            }}
-            style={styles.bannerList}
-            renderItem={({ item }) => {
-              const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
-              return (
-                <ImageBackground
-                  source={bannerSrc}
-                  style={styles.banner}
-                  imageStyle={styles.bannerImageStyle}
-                  resizeMode="cover"
-                >
-                  <View style={styles.bannerContent}>
-                    <Text style={styles.bannerText}>Design Your Perfect</Text>
-                    <Text style={[styles.bannerText, { color: "#fff" }]}>
-                      Mirror Today
-                    </Text>
-                    <Text style={[styles.bannerSubtext, { color: "#fff" }]}>
-                      Crafted Just for You!
-                    </Text>
-                    <TouchableOpacity style={styles.customizeButton}>
-                      <Text style={styles.customizeButtonText}>
-                        Customize Now
-                      </Text>
+          {/* BANNERS SECTION WITH CUSTOMIZABLE COLORS */}
+          {banners.length > 0 && (
+            <View style={styles.bannerSection}>
+              <Text style={styles.bannerSectionTitle}>Featured</Text>
+              <FlatList
+                data={banners}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                onScroll={(event) => {
+                  const index = Math.round(
+                    event.nativeEvent.contentOffset.x /
+                    event.nativeEvent.layoutMeasurement.width
+                  );
+                  setActiveBanner(index);
+                }}
+                style={styles.bannerList}
+                contentContainerStyle={styles.bannerContentContainer}
+                renderItem={({ item }) => {
+                  const bannerSrc = safeImageSource(item?.imageUrl) || PLACEHOLDER;
+                  
+                  // Use custom colors from Firebase or fallback to defaults
+                  const titleColor = item.titleColor || "#FFFFFF";
+                  const subtitleColor = item.subtitleColor || "#FFFFFF";
+                  const buttonColor = item.buttonColor || "#A68B69";
+                  const buttonTextColor = item.buttonTextColor || "#FFFFFF";
+                  const textPosition = item.textPosition || "left";
+                  
+                  // Determine text alignment based on position
+                  const textAlign = textPosition === "center" ? "center" : 
+                                  textPosition === "right" ? "right" : "left";
+                  
+                  const contentAlignment = textPosition === "center" ? "center" : 
+                                         textPosition === "right" ? "flex-end" : "flex-start";
+
+                  return (
+                    <TouchableOpacity
+                      onPress={() => handleBannerPress(item)}
+                      activeOpacity={0.9}
+                    >
+                      <ImageBackground
+                        source={bannerSrc}
+                        style={styles.banner}
+                        imageStyle={styles.bannerImageStyle}
+                        resizeMode="cover"
+                      >
+                        {/* Banner Overlay Content with Custom Colors */}
+                        <View style={[styles.bannerContent, { alignItems: contentAlignment }]}>
+                          {/* Title Section */}
+                          {item.title && (
+                            <View style={styles.bannerTitleContainer}>
+                              <Text style={[styles.bannerTitle, { color: titleColor, textAlign }]}>
+                                {item.title}
+                              </Text>
+                            </View>
+                          )}
+                          
+                          {/* Subtitle Section */}
+                          {item.subtitle && (
+                            <View style={styles.bannerSubtitleContainer}>
+                              <Text style={[styles.bannerSubtitle, { color: subtitleColor, textAlign }]}>
+                                {item.subtitle}
+                              </Text>
+                            </View>
+                          )}
+                          
+                          {/* CTA Button */}
+                          <TouchableOpacity 
+                            style={[styles.bannerCtaButton, { backgroundColor: buttonColor }]}
+                            onPress={() => handleBannerPress(item)}
+                          >
+                            <Text style={[styles.bannerCtaButtonText, { color: buttonTextColor }]}>
+                              {item.ctaText || "Customize Me"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </ImageBackground>
                     </TouchableOpacity>
-                  </View>
-                </ImageBackground>
-              );
-            }}
-          />
-          <View style={styles.bannerDotsContainer}>
-            {banners.map((_, index) => (
-              <View
-                key={index}
-                style={[styles.dot, activeBanner === index && styles.activeDot]}
+                  );
+                }}
               />
-            ))}
-          </View>
+              {/* Banner Dots - Only show if there's more than 1 banner */}
+              {banners.length > 1 && (
+                <View style={styles.bannerDotsContainer}>
+                  {banners.map((_, index) => (
+                    <View
+                      key={index}
+                      style={[styles.dot, activeBanner === index && styles.activeDot]}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* PRODUCTS */}
           <View style={styles.sectionHeader}>
@@ -639,43 +748,103 @@ const styles = StyleSheet.create({
     color: "#A68B69",
     marginLeft: 4,
   },
-  bannerList: { marginTop: 20, paddingHorizontal: 20 },
+  // Banner Styles - UPDATED WITH CUSTOMIZABLE OPTIONS
+  bannerSection: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  bannerSectionTitle: {
+    fontFamily: "LeagueSpartan_700Bold",
+    fontSize: 20,
+    color: "#000",
+    marginBottom: 15,
+  },
+  bannerList: {
+    borderRadius: 20,
+  },
+  bannerContentContainer: {
+    paddingRight: 15,
+  },
   banner: {
-    width: 320,
-    height: 150,
+    width: width - 40,
+    height: 200,
     marginRight: 15,
-    borderRadius: 15,
+    borderRadius: 20,
     overflow: "hidden",
-    justifyContent: "center",
-    padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
   },
   bannerImageStyle: {
-    borderRadius: 15,
-  },
-  bannerContent: { width: "60%", padding: 10 },
-  bannerText: { fontFamily: "LeagueSpartan_700Bold", fontSize: 18, color: "#000" },
-  bannerSubtext: { fontFamily: "Montserrat_400Regular", fontSize: 12, marginTop: 5, color: "#000" },
-  customizeButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.7)",
-    paddingVertical: 8,
-    paddingHorizontal: 15,
     borderRadius: 20,
-    marginTop: 10,
-    alignSelf: "flex-start",
   },
-  customizeButtonText: {
+  bannerContent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  bannerTitleContainer: {
+    marginBottom: 8,
+  },
+  bannerTitle: {
+    fontFamily: "LeagueSpartan_700Bold",
+    fontSize: 24,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+    lineHeight: 28,
+  },
+  bannerSubtitleContainer: {
+    marginBottom: 20,
+    maxWidth: '80%',
+  },
+  bannerSubtitle: {
+    fontFamily: "Montserrat_400Regular",
+    fontSize: 14,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+    lineHeight: 18,
+  },
+  bannerCtaButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  bannerCtaButtonText: {
     fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#A68B69",
+    fontSize: 14,
+    letterSpacing: 0.5,
   },
-  bannerDotsContainer: { flexDirection: "row", justifyContent: "center", marginTop: 10 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#D9D9D9", marginHorizontal: 4 },
-  activeDot: { backgroundColor: "#A68B69" },
+  bannerDotsContainer: { 
+    flexDirection: "row", 
+    justifyContent: "center", 
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  dot: { 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4, 
+    backgroundColor: "#D9D9D9", 
+    marginHorizontal: 4 
+  },
+  activeDot: { 
+    backgroundColor: "#A68B69",
+    width: 20,
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -684,9 +853,20 @@ const styles = StyleSheet.create({
     marginTop: 25,
     marginBottom: 10,
   },
-  sectionTitle: { fontFamily: "LeagueSpartan_700Bold", fontSize: 20, color: "#000" },
-  seeAllText: { fontFamily: "Montserrat_400Regular", color: "#A68B69" },
-  productRow: { justifyContent: "space-between", paddingHorizontal: 15, marginBottom: 10 },
+  sectionTitle: { 
+    fontFamily: "LeagueSpartan_700Bold", 
+    fontSize: 20, 
+    color: "#000" 
+  },
+  seeAllText: { 
+    fontFamily: "Montserrat_400Regular", 
+    color: "#A68B69" 
+  },
+  productRow: { 
+    justifyContent: "space-between", 
+    paddingHorizontal: 15, 
+    marginBottom: 10 
+  },
   productCard: {
     width: "47%",
     backgroundColor: "#F9F9F9",

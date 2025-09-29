@@ -17,7 +17,6 @@ import ProductScreen from "../screens/ProductScreen";
 import MessageScreen from "../screens/MessageScreen";
 import ChatScreen from "../screens/ChatScreen";
 import HelpAndSupportScreen from "../screens/HelpAndSupportScreen";
-import CustomizationScreen from "../screens/CustomizationScreen";
 import ProductListScreen from "../screens/ProductListScreen";
 import ChatbotScreen from "../screens/ChatbotScreen";
 import CheckoutScreen from "../screens/CheckoutScreen";
@@ -32,6 +31,7 @@ import TabNavigator from "../components/TabNavigator";
 import FloatingChatbot from "../components/FloatingChatbot";
 import AboutUsScreen from "../screens/AboutUsScreen";
 import MyAddressScreen from "../screens/MyAddressScreen";
+import CustomizationScreen from "../screens/CustomizationScreen";
 
 const Stack = createNativeStackNavigator();
 

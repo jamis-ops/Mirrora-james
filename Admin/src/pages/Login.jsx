@@ -38,7 +38,7 @@ export default function Login() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const ADMIN_EMAIL = "mirrora@gmail.com";
+  const ADMIN_EMAIL = "aubriemariedual13@gmail.com";
 
   // Check for password reset parameters on component mount
   useEffect(() => {

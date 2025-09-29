@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle, MapPin } from "lucide-react";
 
 import { db } from "../../Backend/firebaseConfig.js";
@@ -174,7 +175,32 @@ const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
 
 // Order Detail Modal Component
 const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePayment }) => {
-    if (!isOpen) return null;
+    const navigate = useNavigate();
+
+    // Function to handle chat with customer
+    const handleChatWithCustomer = () => {
+        // Extract customer information from the order
+        const customerInfo = {
+            id: order.customerId || order.userId || order.id, // Use order ID as fallback if no customer ID
+            name: order.customerName || order.customer?.name || order.userName || order.userInfo?.name || 'Customer',
+            email: order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || '',
+            phone: order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || '',
+            orderId: order.displayId || order.id,
+            orderTotal: order.total || order.amount || order.price || 0
+        };
+
+        // Store customer info in sessionStorage to pass to Messages page
+        sessionStorage.setItem('selectedCustomer', JSON.stringify(customerInfo));
+        
+        // Store pre-filled message
+        sessionStorage.setItem('prefilledMessage', 'Thank you for ordering in Mirrora! We appreciate your business. How can we assist you today?');
+        
+        // Navigate to Messages page using the correct route path
+        navigate('/admin/messages');
+        
+        // Close the modal
+        onClose();
+    };
 
     // Enhanced date formatting function
     const formatDateTime = useCallback((dateStr, timeStr) => {
@@ -210,6 +236,8 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
     const downpaymentAmount = order.downPayment || totalAmount * 0.5;
     const remainingAmount = order.remainingPayment || totalAmount - downpaymentAmount;
 
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
@@ -218,7 +246,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-[#A68B69] rounded-xl flex items-center justify-center shadow-lg">
-                                 className="w-6 h-6 text-white" />
+                                <Package className="w-6 h-6 text-white" />
                             </div>
                             <div>
                                 <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
@@ -234,7 +262,10 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                 <div className="p-6 space-y-8">
                     {/* Quick Actions */}
                     <div className="flex flex-wrap gap-3">
-                        <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
+                        <button 
+                            onClick={handleChatWithCustomer}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
+                        >
                             <MessageCircle className="w-4 h-4" />
                             Chat with Customer
                         </button>
@@ -266,7 +297,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                 <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} currentStatus={order.status} />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
-                                                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
+                                <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
                                 <EnhancedPaymentBadge payment={order.payment || 'pending'} orderId={order.id} onUpdate={onUpdatePayment} />
                             </div>
                         </div>
@@ -319,7 +350,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
 
                     {/* Product Information Card */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
-                                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <Package className="w-5 h-5 text-[#A68B69]" />
                             Product Details
                         </h3>
@@ -484,7 +515,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                         {order.bankDetails?.accountNumber && (
                                             <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-500">
                                                 <div className="flex justify-between items-center mb-2">
-                                                                                                        <span className="text-blue-800 font-medium">Account Number</span>
+                                                    <span className="text-blue-800 font-medium">Account Number</span>
                                                 </div>
                                                 <p className="text-lg font-bold text-blue-900">
                                                     {order.bankDetails.accountNumber}
@@ -584,7 +615,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                     <span className="font-semibold text-gray-900">{formatCurrency(totalAmount)}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-3 border-b border-gray-100">
-                                                                        <span className="text-gray-600 font-medium">Shipping Fee</span>
+                                    <span className="text-gray-600 font-medium">Shipping Fee</span>
                                     <span className="font-semibold text-gray-900">
                                         {order.shippingFee ? formatCurrency(order.shippingFee) : 'FREE'}
                                     </span>
@@ -713,7 +744,7 @@ export default function Orders() {
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [activeTab, setActiveTab] = useState("all"); // "all" or "customized"
+    const [activeTab, setActiveTab] = useState("all"); // "all", "customized", or "cancelled"
     const ordersPerPage = 5;
     
     // State for confirmation modals
@@ -769,19 +800,19 @@ export default function Orders() {
                 ...doc.data()
             }));
             
-            // Sort orders: newest first, but delivered orders at the end
+            // Sort orders: newest first, but delivered and cancelled orders at the end
             const sortedOrders = ordersList.sort((a, b) => {
                 // Get timestamps for both orders
                 const aTimestamp = getOrderTimestamp(a);
                 const bTimestamp = getOrderTimestamp(b);
                 
-                // If both are delivered or both are not delivered, sort by timestamp (newest first)
-                if ((a.status === 'delivered') === (b.status === 'delivered')) {
+                // If both are delivered/cancelled or both are not, sort by timestamp (newest first)
+                if ((a.status === 'delivered' || a.status === 'cancelled') === (b.status === 'delivered' || b.status === 'cancelled')) {
                     return bTimestamp - aTimestamp; // Newest first
                 }
                 
-                // If only one is delivered, put it at the end
-                return a.status === 'delivered' ? 1 : -1;
+                // If only one is delivered or cancelled, put it at the end
+                return (a.status === 'delivered' || a.status === 'cancelled') ? 1 : -1;
             });
             
             setOrders(sortedOrders);
@@ -827,8 +858,12 @@ export default function Orders() {
     // Memoized calculations to avoid re-calculating on every render
     const filteredOrders = useMemo(() => {
         return orders.filter((order) => {
-            // Filter by tab (all orders or customized orders)
+            // Filter by tab (all orders, customized orders, or cancelled orders)
             if (activeTab === "customized" && !isCustomizedOrder(order)) {
+                return false;
+            }
+            
+            if (activeTab === "cancelled" && order.status !== "cancelled") {
                 return false;
             }
             
@@ -866,6 +901,7 @@ export default function Orders() {
         processing: orders.filter((o) => o.status && o.status.toLowerCase() === "processing").length,
         shipped: orders.filter((o) => o.status && o.status.toLowerCase() === "shipped").length,
         delivered: orders.filter((o) => o.status && o.status.toLowerCase() === "delivered").length,
+        cancelled: orders.filter((o) => o.status && o.status.toLowerCase() === "cancelled").length,
         customized: orders.filter(isCustomizedOrder).length,
     }), [orders]);
 
@@ -915,11 +951,11 @@ export default function Orders() {
                     const aTimestamp = getOrderTimestamp(a);
                     const bTimestamp = getOrderTimestamp(b);
                     
-                    if ((a.status === 'delivered') === (b.status === 'delivered')) {
+                    if ((a.status === 'delivered' || a.status === 'cancelled') === (b.status === 'delivered' || b.status === 'cancelled')) {
                         return bTimestamp - aTimestamp;
                     }
                     
-                    return a.status === 'delivered' ? 1 : -1;
+                    return (a.status === 'delivered' || a.status === 'cancelled') ? 1 : -1;
                 });
             });
             
@@ -995,7 +1031,7 @@ export default function Orders() {
             Customized: isCustomizedOrder(order) ? "Yes" : "No",
         }));
 
-                const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
 
@@ -1004,7 +1040,7 @@ export default function Orders() {
         saveAs(data, "orders.xlsx");
     };
 
-    const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered"];
+    const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
 
     if (loading) {
         return (
@@ -1043,10 +1079,16 @@ export default function Orders() {
                         >
                             Customized Orders ({orderCounts.customized})
                         </button>
+                        <button
+                            className={`py-3 px-6 font-medium text-sm rounded-t-lg transition-all duration-200 ${activeTab === "cancelled" ? "bg-white text-[#A68B69] border-t-2 border-l-2 border-r-2 border-[#A68B69]" : "text-gray-500 hover:text-gray-700"}`}
+                            onClick={() => setActiveTab("cancelled")}
+                        >
+                            Cancelled Orders ({orderCounts.cancelled})
+                        </button>
                     </div>
 
                     {/* Enhanced Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
                         <div
                             className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "All Status" ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20" : "border-gray-200 hover:border-[#A68B69]/50"}`}
                             onClick={() => { setStatusFilter("All Status"); setCurrentPage(1); }}
@@ -1106,7 +1148,7 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-md">
-                                                                                <Package className="w-6 h-6 text-white" />
+                                        <Package className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Shipped" ? "bg-blue-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
@@ -1123,12 +1165,29 @@ export default function Orders() {
                             <div className="relative">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center shadow-md">
-                                                                                <CheckCircle className="w-6 h-6 text-white" />
+                                        <CheckCircle className="w-6 h-6 text-white" />
                                     </div>
                                     <div className={`w-3 h-3 rounded-full ${statusFilter === "Delivered" ? "bg-green-500" : "bg-gray-300"} transition-colors duration-200`}></div>
                                 </div>
                                 <p className="text-sm font-medium text-gray-600 mb-1">Delivered</p>
                                 <p className="text-3xl font-bold text-green-600">{orderCounts.delivered}</p>
+                            </div>
+                        </div>
+
+                        <div
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Cancelled" ? "border-red-600 bg-red-50 shadow-red-200" : "border-gray-200 hover:border-red-300"}`}
+                            onClick={() => { setStatusFilter("Cancelled"); setCurrentPage(1); }}
+                        >
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-red-500/10 rounded-full -translate-y-10 translate-x-10"></div>
+                            <div className="relative">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center shadow-md">
+                                        <XCircle className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Cancelled" ? "bg-red-500" : "bg-gray-300"} transition-colors duration-200`}></div>
+                                </div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Cancelled</p>
+                                <p className="text-3xl font-bold text-red-600">{orderCounts.cancelled}</p>
                             </div>
                         </div>
                     </div>
