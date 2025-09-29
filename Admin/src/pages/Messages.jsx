@@ -57,6 +57,32 @@ function Messages() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const lastMessageCountRef = useRef(0);
 
+  // Check for pre-filled message on component mount
+  useEffect(() => {
+    const prefilledMessage = sessionStorage.getItem('prefilledMessage');
+    const customerName = sessionStorage.getItem('chatCustomerName');
+    const customerEmail = sessionStorage.getItem('chatCustomerEmail');
+    
+    if (prefilledMessage && customerName) {
+      // Find thread for this customer
+      const existingThread = chatThreads.find(thread => 
+        thread.userName === customerName || 
+        thread.customerEmail === customerEmail
+      );
+      
+      if (existingThread) {
+        setSelectedThread(existingThread);
+        // Auto-fill the message input
+        setReplyContent(prefilledMessage);
+        
+        // Clear the session storage
+        sessionStorage.removeItem('prefilledMessage');
+        sessionStorage.removeItem('chatCustomerName');
+        sessionStorage.removeItem('chatCustomerEmail');
+      }
+    }
+  }, [chatThreads]);
+
   const scrollToBottom = (behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
@@ -65,7 +91,6 @@ function Messages() {
   const handleScroll = () => {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-      // Consider "at bottom" if within 100px of the bottom to account for small scroll variations
       setIsAtBottom(scrollHeight - scrollTop - clientHeight < 100);
     }
   };
@@ -76,7 +101,7 @@ function Messages() {
       scrollToBottom('smooth');
     }
     lastMessageCountRef.current = messages.length;
-  }, [messages]);
+  }, [messages, isAtBottom]);
 
   // Add scroll event listener to messages container
   useEffect(() => {
@@ -105,7 +130,8 @@ function Messages() {
             id: doc.id,
             ...data,
             userName: data.userName || data.senderName || data.customerName || data.name || 'Unknown User',
-            hasCustomization: data.hasCustomizationRequest || false
+            hasCustomization: data.hasCustomizationRequest || false,
+            customerEmail: data.customerEmail || data.email || ''
           });
         }
       });
@@ -123,7 +149,7 @@ function Messages() {
 
   const handleThreadSelect = async (thread) => {
     setSelectedThread(thread);
-    setIsAtBottom(true); // Reset to bottom when selecting a new thread
+    setIsAtBottom(true);
     if (!thread.isRead) {
       const threadRef = doc(db, `artifacts/${appId}/public/data/chats`, thread.id);
       try {
@@ -208,7 +234,7 @@ function Messages() {
       }, { merge: true });
 
       setReplyContent('');
-      setIsAtBottom(true); // Ensure we scroll to bottom after sending a message
+      setIsAtBottom(true);
     } catch (error) {
       console.error("Error sending reply: ", error);
       alert("Failed to send message. Please try again.");
@@ -332,7 +358,7 @@ Ready to proceed? Click the button below to confirm your custom order!`;
       setShowProposalModal(false);
       setProposalData({ price: '', timeline: '', notes: '', downPayment: '', paymentTerms: '' });
       setSelectedCustomization(null);
-      setIsAtBottom(true); // Scroll to bottom after sending proposal
+      setIsAtBottom(true);
 
       alert('Customization proposal sent successfully! Customer can now proceed to checkout.');
     } catch (error) {

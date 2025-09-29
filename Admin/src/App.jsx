@@ -14,7 +14,7 @@ import LogIn from "./pages/Login.jsx";
 import "./index.css";
 import Products from "./pages/Products.jsx";
 import Messages from "./pages/Messages.jsx";
-import Reviews from "./pages/Reviews.jsx"; // <-- Import the Reviews component
+import Reviews from "./pages/Reviews.jsx";
 
 export default function App() {
   return (
@@ -41,7 +41,7 @@ export default function App() {
             {/* Route for the FAQ management page */}
             <Route path="faq" element={<FAQ />} />
             {/* Route for the Reviews management page */}
-            <Route path="reviews" element={<Reviews />} /> {/* <-- Add this route */}
+            <Route path="reviews" element={<Reviews />} />
             {/* Route for the general settings page */}
             <Route path="settings" element={<Settings />} />
           </Route>

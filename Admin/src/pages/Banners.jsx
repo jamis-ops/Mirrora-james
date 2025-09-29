@@ -237,7 +237,7 @@ export default function Banners() {
       <div className="bg-white rounded-xl shadow-md p-6 flex flex-col gap-3">
         {banners.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-gray-500">No banners yet. Create your first banner!</p>
+            <p className="text-gray-500">Loading...</p>
           </div>
         ) : (
           banners.map((banner) => (

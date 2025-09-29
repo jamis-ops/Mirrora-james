@@ -38,8 +38,11 @@ export default function AdminSidebar() {
   return (
     <aside
       className="
+        fixed
+        left-0
+        top-0
+        h-screen
         w-64
-        min-h-screen
         bg-gradient-to-b
         from-gray-50
         to-gray-100
@@ -49,6 +52,7 @@ export default function AdminSidebar() {
         border-r
         border-gray-200
         font-sans
+        z-50
       "
     >
       {/* Logo / Title */}
@@ -82,9 +86,10 @@ export default function AdminSidebar() {
               transition-all
               duration-300
               mb-2
-              ${isActive
-                ? 'bg-gradient-to-r from-[#A67B5B] to-[#8B5E3C] text-white shadow-md'
-                : 'text-[#2C1810] hover:bg-[#EDE7E0] hover:text-[#A67B5B]'
+              ${
+                isActive
+                  ? "bg-gradient-to-r from-[#A67B5B] to-[#8B5E3C] text-white shadow-md"
+                  : "text-[#2C1810] hover:bg-[#EDE7E0] hover:text-[#A67B5B]"
               }`
             }
           >

@@ -1,6 +1,7 @@
 // Orders.jsx
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, Filter, Eye, Calendar, Package, CreditCard, User, Phone, Mail, Clock, TrendingUp, MoreHorizontal, Download, RefreshCw, Plus, Settings, Bell, ChevronDown, CheckCircle, XCircle, AlertCircle, ChevronLeft, ChevronRight, MessageCircle, MapPin } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { db } from "../../Backend/firebaseConfig.js";
 import { collection, onSnapshot, doc, updateDoc, getDocs, query, orderBy, limit, where } from "firebase/firestore";
@@ -29,8 +30,17 @@ const generateDisplayOrderId = () => {
     return `ORD-${timestamp}-${random}`;
 };
 
-// Confirmation Modal Component
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel" }) => {
+// Confirmation Modal Component with Loader
+const ConfirmationModal = ({ 
+    isOpen, 
+    onClose, 
+    onConfirm, 
+    title, 
+    message, 
+    confirmText = "Confirm", 
+    cancelText = "Cancel",
+    isLoading = false 
+}) => {
     if (!isOpen) return null;
 
     return (
@@ -44,14 +54,19 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
                     <div className="flex justify-end gap-3">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-all duration-200"
+                            disabled={isLoading}
+                            className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {cancelText}
                         </button>
                         <button
                             onClick={onConfirm}
-                            className="px-4 py-2 text-white bg-[#A68B69] hover:bg-[#8C7355] rounded-lg font-medium transition-all duration-200"
+                            disabled={isLoading}
+                            className="px-4 py-2 text-white bg-[#A68B69] hover:bg-[#8C7355] rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
+                            {isLoading && (
+                                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                            )}
                             {confirmText}
                         </button>
                     </div>
@@ -63,26 +78,16 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirm
 
 // Enhanced Header Component
 const Header = () => (
-    <header className="bg-white/100 backdrop-blur-lg border-b border-gray-200/50 px-6 py-4 sticky top-0 z-40">
+    <header>
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-                {/* Add your logo or title here */}
-            </div>
-            <div className="flex items-center gap-3">
-                <button className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200">
-                    <Bell className="w-5 h-5" />
-                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
-                </button>
-                <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200">
-                    <Settings className="w-5 h-5" />
-                </button>
             </div>
         </div>
     </header>
 );
 
 // Enhanced Status Badge Component with workflow enforcement
-const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
+const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus, isLoading = false }) => {
     const statusConfig = {
         pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', icon: Clock },
         confirmed: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', icon: CheckCircle },
@@ -96,15 +101,18 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
     const config = statusConfig[status] || statusConfig.pending;
     const Icon = config.icon;
 
-    // Define the status progression
+    // Define the status progression - include cancelled as an option from any status
     const getAvailableStatusOptions = (currentStatus) => {
-        const statusOrder = ['pending', 'processing', 'shipped', 'delivered'];
+        const statusOrder = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
         const currentIndex = statusOrder.indexOf(currentStatus);
         
-        if (currentIndex === -1) return statusOrder; // For non-standard statuses, show all
+        if (currentIndex === -1) {
+            // For cancelled or other statuses, show all options including cancelled
+            return [...statusOrder, 'cancelled'];
+        }
         
-        // Only allow moving forward in the workflow, not backward
-        return statusOrder.filter((_, index) => index >= currentIndex);
+        // Allow moving forward in workflow OR cancelling from any status
+        return [...statusOrder.filter((_, index) => index >= currentIndex), 'cancelled'];
     };
 
     const availableOptions = getAvailableStatusOptions(currentStatus);
@@ -114,8 +122,8 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
             <select
                 value={status}
                 onChange={(e) => onUpdate(orderId, e.target.value)}
-                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
-                disabled={!availableOptions.includes(status) && status !== currentStatus}
+                disabled={isLoading || (!availableOptions.includes(status) && status !== currentStatus)}
+                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px] disabled:opacity-50 disabled:cursor-not-allowed`}
             >
                 {availableOptions.map(option => (
                     <option key={option} value={option}>
@@ -129,7 +137,11 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
                 )}
             </select>
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <Icon className="w-4 h-4" />
+                {isLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current"></div>
+                ) : (
+                    <Icon className="w-4 h-4" />
+                )}
             </div>
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
                 <ChevronDown className="w-4 h-4" />
@@ -138,8 +150,8 @@ const EnhancedStatusBadge = ({ status, orderId, onUpdate, currentStatus }) => {
     );
 };
 
-// Enhanced Payment Badge Component
-const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
+// Enhanced Payment Badge Component with Loader
+const EnhancedPaymentBadge = ({ payment, orderId, onUpdate, isLoading = false }) => {
     const paymentConfig = {
         pending: { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300', icon: XCircle },
         partial: { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', icon: AlertCircle },
@@ -155,7 +167,8 @@ const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
             <select
                 value={payment}
                 onChange={(e) => onUpdate(orderId, e.target.value)}
-                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px]`}
+                disabled={isLoading}
+                className={`pl-10 pr-8 py-3 rounded-xl text-sm font-medium border-2 cursor-pointer appearance-none transition-all duration-200 hover:shadow-md ${config.bg} ${config.text} ${config.border} capitalize min-w-[140px] disabled:opacity-50 disabled:cursor-not-allowed`}
             >
                 <option value="pending">Pending</option>
                 <option value="partial">Partial (50% Paid)</option>
@@ -163,7 +176,11 @@ const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
                 <option value="refunded">Refunded</option>
             </select>
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                <Icon className="w-4 h-4" />
+                {isLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-current"></div>
+                ) : (
+                    <Icon className="w-4 h-4" />
+                )}
             </div>
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
                 <ChevronDown className="w-4 h-4" />
@@ -173,7 +190,36 @@ const EnhancedPaymentBadge = ({ payment, orderId, onUpdate }) => {
 };
 
 // Order Detail Modal Component
-const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePayment }) => {
+const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePayment, isLoading = false }) => {
+    const navigate = useNavigate();
+
+    // NEW: Function to handle chat with customer
+    const handleChatWithCustomer = () => {
+        const customerName = getCustomerName(order);
+        const customerEmail = getCustomerEmail(order);
+        const orderId = order.displayId || order.id;
+        
+        // Create the pre-filled message exactly as requested
+        const message = `Hi ${customerName},
+
+Thank you so much for your order with Mirrora Philippines! ✨
+Your support means the world to us, and we're excited for you to receive your item. We'll keep you updated as your order gets ready and shipped.
+
+If you have any questions in the meantime, feel free to reach out. We're always here to help. 💌
+
+With gratitude,
+The Mirrora PH Team`;
+
+        // Store the customer info and pre-filled message in sessionStorage
+        sessionStorage.setItem('chatCustomerName', customerName);
+        sessionStorage.setItem('chatCustomerEmail', customerEmail);
+        sessionStorage.setItem('prefilledMessage', message);
+        sessionStorage.setItem('chatOrderId', orderId);
+        
+        // Navigate to messages page
+        navigate('/admin/messages');
+    };
+
     if (!isOpen) return null;
 
     // Enhanced date formatting function
@@ -223,20 +269,35 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                 <p className="text-gray-600">Complete order information and management</p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md">
+                        <button 
+                            onClick={onClose} 
+                            disabled={isLoading}
+                            className="w-10 h-10 rounded-xl bg-white/80 hover:bg-white text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50"
+                        >
                             ✕
                         </button>
                     </div>
                 </div>
 
                 <div className="p-6 space-y-8">
+                    {isLoading && (
+                        <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-2xl z-10">
+                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#A68B69]"></div>
+                        </div>
+                    )}
+
+                    {/* NEW: Chat with Customer Button */}
                     <div className="flex flex-wrap gap-3">
-                        <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-all duration-200 flex items-center gap-2">
+                        <button 
+                            onClick={handleChatWithCustomer}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2"
+                        >
                             <MessageCircle className="w-4 h-4" />
                             Chat with Customer
                         </button>
                     </div>
 
+                    {/* Rest of the modal content remains exactly the same */}
                     <div className="bg-[#F8F5F2] rounded-2xl p-6 border border-gray-200">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                             <Package className="w-5 h-5 text-[#A68B69]" />
@@ -259,11 +320,22 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Order Status</label>
-                                <EnhancedStatusBadge status={order.status} orderId={order.id} onUpdate={onUpdateStatus} currentStatus={order.status} />
+                                <EnhancedStatusBadge 
+                                    status={order.status} 
+                                    orderId={order.id} 
+                                    onUpdate={onUpdateStatus} 
+                                    currentStatus={order.status}
+                                    isLoading={isLoading}
+                                />
                             </div>
                             <div className="bg-white rounded-xl p-4 shadow-sm">
                                 <label className="text-sm font-medium text-gray-500 block mb-2">Payment Status</label>
-                                <EnhancedPaymentBadge payment={order.payment || 'pending'} orderId={order.id} onUpdate={onUpdatePayment} />
+                                <EnhancedPaymentBadge 
+                                    payment={order.payment || 'pending'} 
+                                    orderId={order.id} 
+                                    onUpdate={onUpdatePayment}
+                                    isLoading={isLoading}
+                                />
                             </div>
                         </div>
                     </div>
@@ -438,7 +510,7 @@ const OrderDetailModal = ({ order, isOpen, onClose, onUpdateStatus, onUpdatePaym
                                                 <div className="flex items-center gap-2">
                                                     <CheckCircle className="w-4 h-4 text-green-500" />
                                                     <span className="text-sm text-green-800 font-medium">Fully Paid</span>
-                                                </div>
+                                                    </div>
                                                 <span className="text-sm font-bold text-green-800">{formatCurrency(totalAmount)}</span>
                                             </div>
                                         ) : (
@@ -698,6 +770,7 @@ const getOrderTimestamp = (order) => {
 
 // Main Orders Component
 export default function Orders() {
+    const navigate = useNavigate();
     const [orders, setOrders] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("All Status");
@@ -708,9 +781,17 @@ export default function Orders() {
     const [activeTab, setActiveTab] = useState("all");
     const ordersPerPage = 5;
     
+    // State for confirmation modals and loaders
     const [showStatusConfirm, setShowStatusConfirm] = useState(false);
     const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
-    const [pendingUpdate, setPendingUpdate] = useState({ type: '', orderId: '', newValue: '', currentValue: '' });
+    const [pendingUpdate, setPendingUpdate] = useState({ 
+        type: '', 
+        orderId: '', 
+        newValue: '', 
+        currentValue: '',
+        isLoading: false 
+    });
+    const [updatingOrders, setUpdatingOrders] = useState(new Set());
 
     // Enhanced date formatting function for table display
     const formatOrderDate = useCallback((dateStr) => {
@@ -776,7 +857,6 @@ export default function Orders() {
         }, (error) => {
             console.error("Error fetching orders:", error);
             setLoading(false);
-            alert("Failed to fetch orders. Please try again.");
         });
 
         return unsubscribe;
@@ -796,7 +876,7 @@ export default function Orders() {
             }
             
             const customerName = getCustomerName(order);
-            const customerEmail = order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || '';
+            const customerEmail = getCustomerEmail(order);
             const customerPhone = order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || '';
 
             const matchesSearch =
@@ -828,6 +908,7 @@ export default function Orders() {
         processing: orders.filter((o) => o.status && o.status.toLowerCase() === "processing").length,
         shipped: orders.filter((o) => o.status && o.status.toLowerCase() === "shipped").length,
         delivered: orders.filter((o) => o.status && o.status.toLowerCase() === "delivered").length,
+        cancelled: orders.filter((o) => o.status && o.status.toLowerCase() === "cancelled").length,
         customized: orders.filter(isCustomizedOrder).length,
     }), [orders]);
 
@@ -843,7 +924,8 @@ export default function Orders() {
             type: 'status',
             orderId,
             newValue: newStatus,
-            currentValue: order.status
+            currentValue: order.status,
+            isLoading: false
         });
         setShowStatusConfirm(true);
     };
@@ -855,12 +937,13 @@ export default function Orders() {
             type: 'payment',
             orderId,
             newValue: newPaymentStatus,
-            currentValue: order.payment || 'pending'
+            currentValue: order.payment || 'pending',
+            isLoading: false
         });
         setShowPaymentConfirm(true);
     };
 
-    // NEW: Function to send email update via backend
+    // Function to send email update via backend
     const sendOrderUpdateEmail = async (order) => {
         const customerEmail = getCustomerEmail(order);
         if (!customerEmail) {
@@ -879,7 +962,7 @@ export default function Orders() {
         };
 
         try {
-            const response = await fetch('http://localhost:3001/api/send-order-update-email', {  // Change to your production URL later
+            const response = await fetch('http://localhost:3001/api/send-order-update-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(emailData),
@@ -891,14 +974,18 @@ export default function Orders() {
             console.log('Email sent successfully');
         } catch (error) {
             console.error('Error sending email:', error);
-            // Optional: alert("Status updated, but email failed to send.");
         }
     };
 
     // Function to update order status in Firestore
     const handleUpdateOrderStatus = async (orderId, newStatus) => {
         try {
+            setPendingUpdate(prev => ({ ...prev, isLoading: true }));
+            setUpdatingOrders(prev => new Set(prev).add(orderId));
+
             const order = orders.find(o => o.id === orderId);
+            
+            // Handle inventory management for processing status
             if (newStatus === "processing" && order.status !== "processing") {
                 let items = [];
                 if (order.items && Array.isArray(order.items) && order.items.length > 0) {
@@ -923,7 +1010,12 @@ export default function Orders() {
                         const qty = item.quantity || 1;
 
                         if (currentInventory < qty) {
-                            alert(`Insufficient stock for ${item.name}. Available: ${currentInventory}, Required: ${qty}`);
+                            setPendingUpdate(prev => ({ ...prev, isLoading: false }));
+                            setUpdatingOrders(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(orderId);
+                                return newSet;
+                            });
                             return;
                         }
 
@@ -938,54 +1030,64 @@ export default function Orders() {
 
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { status: newStatus });
-            alert(`Order status successfully updated to "${newStatus}"`);
-
-            // NEW: Find the updated order and send email
+            
+            // Find the updated order and send email
             const updatedOrder = orders.find(o => o.id === orderId);
             if (updatedOrder) {
-                updatedOrder.status = newStatus;  // Update local for email
-                await sendOrderUpdateEmail(updatedOrder);
+                await sendOrderUpdateEmail({ ...updatedOrder, status: newStatus });
             }
 
             setShowStatusConfirm(false);
         } catch (error) {
             console.error("Error updating order status:", error);
-            alert("Failed to update order status. Please try again.");
+        } finally {
+            setPendingUpdate(prev => ({ ...prev, isLoading: false }));
+            setUpdatingOrders(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(orderId);
+                return newSet;
+            });
         }
     };
 
     // Function to update payment status in Firestore
     const handleUpdatePaymentStatus = async (orderId, newPaymentStatus) => {
         try {
+            setPendingUpdate(prev => ({ ...prev, isLoading: true }));
+            setUpdatingOrders(prev => new Set(prev).add(orderId));
+
             const orderRef = doc(db, "orders", orderId);
             await updateDoc(orderRef, { payment: newPaymentStatus });
-            alert(`Payment status successfully updated to "${newPaymentStatus}"`);
-
-            // NEW: Find the updated order and send email
+            
+            // Find the updated order and send email
             const updatedOrder = orders.find(o => o.id === orderId);
             if (updatedOrder) {
-                updatedOrder.payment = newPaymentStatus;  // Update local for email
-                await sendOrderUpdateEmail(updatedOrder);
+                await sendOrderUpdateEmail({ ...updatedOrder, payment: newPaymentStatus });
             }
 
             setShowPaymentConfirm(false);
         } catch (error) {
             console.error("Error updating payment status:", error);
-            alert("Failed to update payment status. Please try again.");
+        } finally {
+            setPendingUpdate(prev => ({ ...prev, isLoading: false }));
+            setUpdatingOrders(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(orderId);
+                return newSet;
+            });
         }
     };
 
     // Function to export orders to Excel
     const exportToExcel = () => {
         if (!filteredOrders || filteredOrders.length === 0) {
-            alert("No orders to export.");
             return;
         }
 
         const exportData = filteredOrders.map(order => ({
             OrderID: order.displayId || order.id,
             CustomerName: getCustomerName(order),
-            Email: order.userEmail || order.customer?.email || order.customerEmail || order.email || order.userInfo?.email || "N/A",
+            Email: getCustomerEmail(order),
             Phone: order.customerPhone || order.customer?.phone || order.customerPhone || order.phone || order.contactNumber || order.userInfo?.phone || "N/A",
             Product: getProductName(order),
             Quantity: order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || order.quantity || 1,
@@ -1009,7 +1111,7 @@ export default function Orders() {
         saveAs(data, "orders.xlsx");
     };
 
-    const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered"];
+    const statusOptions = ["All Status", "Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
 
     if (loading) {
         return (
@@ -1048,7 +1150,7 @@ export default function Orders() {
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
                         <div
                             className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "All Status" ? "border-[#A68B69] bg-[#A68B69]/10 shadow-[#A68B69]/20" : "border-gray-200 hover:border-[#A68B69]/50"}`}
                             onClick={() => { setStatusFilter("All Status"); setCurrentPage(1); }}
@@ -1133,6 +1235,23 @@ export default function Orders() {
                                 <p className="text-3xl font-bold text-green-600">{orderCounts.delivered}</p>
                             </div>
                         </div>
+
+                        <div
+                            className={`group relative overflow-hidden bg-white rounded-2xl p-6 shadow-lg border-2 cursor-pointer transition-all duration-300 hover:shadow-xl hover:scale-105 ${statusFilter === "Cancelled" ? "border-red-600 bg-red-50 shadow-red-200" : "border-gray-200 hover:border-red-300"}`}
+                            onClick={() => { setStatusFilter("Cancelled"); setCurrentPage(1); }}
+                        >
+                            <div className="absolute top-0 right-0 w-20 h-20 bg-red-500/10 rounded-full -translate-y-10 translate-x-10"></div>
+                            <div className="relative">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center shadow-md">
+                                        <XCircle className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div className={`w-3 h-3 rounded-full ${statusFilter === "Cancelled" ? "bg-red-500" : "bg-gray-300"} transition-colors duration-200`}></div>
+                                </div>
+                                <p className="text-sm font-medium text-gray-600 mb-1">Cancelled</p>
+                                <p className="text-3xl font-bold text-red-600">{orderCounts.cancelled}</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1192,43 +1311,49 @@ export default function Orders() {
                             </thead>
                             <tbody>
                                 {currentOrders.length > 0 ? (
-                                    currentOrders.map((order) => (
-                                        <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
-                                            <td className="p-4 font-medium text-gray-900">{order.displayId || order.id}</td>
-                                            <td className="p-4">{getCustomerName(order)}</td>
-                                            <td className="p-4">{getProductName(order)}</td>
-                                            <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
-                                            <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
-                                            <td className="p-4">
-                                                <EnhancedStatusBadge 
-                                                    status={order.status || 'pending'} 
-                                                    orderId={order.id} 
-                                                    onUpdate={handleStatusUpdateRequest}
-                                                    currentStatus={order.status || 'pending'}
-                                                />
-                                            </td>
-                                            <td className="p-4">
-                                                <EnhancedPaymentBadge 
-                                                    payment={order.payment || 'pending'} 
-                                                    orderId={order.id} 
-                                                    onUpdate={handlePaymentUpdateRequest}
-                                                />
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${isCustomizedOrder(order) ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                                                    {isCustomizedOrder(order) ? 'Customized' : 'Standard'}
-                                                </span>
-                                            </td>
-                                            <td className="p-4">
-                                                <button
-                                                    onClick={() => handleViewOrder(order)}
-                                                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-[#A68B69] hover:bg-[#8C7355] transition-colors duration-200"
-                                                >
-                                                    <Eye className="w-3 h-3" /> View
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    currentOrders.map((order) => {
+                                        const isUpdating = updatingOrders.has(order.id);
+                                        return (
+                                            <tr key={order.id} className="bg-white border-b border-gray-100 hover:bg-gray-50 transition-colors duration-150">
+                                                <td className="p-4 font-medium text-gray-900">{order.displayId || order.id}</td>
+                                                <td className="p-4">{getCustomerName(order)}</td>
+                                                <td className="p-4">{getProductName(order)}</td>
+                                                <td className="p-4">{formatOrderDate(getOrderDate(order))}</td>
+                                                <td className="p-4">{formatCurrency(getTotalAmount(order))}</td>
+                                                <td className="p-4">
+                                                    <EnhancedStatusBadge 
+                                                        status={order.status || 'pending'} 
+                                                        orderId={order.id} 
+                                                        onUpdate={handleStatusUpdateRequest}
+                                                        currentStatus={order.status || 'pending'}
+                                                        isLoading={isUpdating}
+                                                    />
+                                                </td>
+                                                <td className="p-4">
+                                                    <EnhancedPaymentBadge 
+                                                        payment={order.payment || 'pending'} 
+                                                        orderId={order.id} 
+                                                        onUpdate={handlePaymentUpdateRequest}
+                                                        isLoading={isUpdating}
+                                                    />
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${isCustomizedOrder(order) ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                        {isCustomizedOrder(order) ? 'Customized' : 'Standard'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <button
+                                                        onClick={() => handleViewOrder(order)}
+                                                        disabled={isUpdating}
+                                                        className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-[#A68B69] hover:bg-[#8C7355] transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        <Eye className="w-3 h-3" /> View
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 ) : (
                                     <tr>
                                         <td colSpan="9" className="p-6 text-center text-gray-500">
@@ -1282,6 +1407,7 @@ export default function Orders() {
                     onClose={() => setShowOrderDetail(false)}
                     onUpdateStatus={handleStatusUpdateRequest}
                     onUpdatePayment={handlePaymentUpdateRequest}
+                    isLoading={updatingOrders.has(selectedOrder.id)}
                 />
             )}
             
@@ -1293,6 +1419,7 @@ export default function Orders() {
                 message={`Are you sure you want to change the order status from "${pendingUpdate.currentValue}" to "${pendingUpdate.newValue}"?`}
                 confirmText="Update Status"
                 cancelText="Cancel"
+                isLoading={pendingUpdate.isLoading}
             />
             
             <ConfirmationModal
@@ -1303,6 +1430,7 @@ export default function Orders() {
                 message={`Are you sure you want to change the payment status from "${pendingUpdate.currentValue}" to "${pendingUpdate.newValue}"?`}
                 confirmText="Update Payment Status"
                 cancelText="Cancel"
+                isLoading={pendingUpdate.isLoading}
             />
         </div>
     );

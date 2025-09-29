@@ -76,13 +76,6 @@ const Header = ({ onBellClick, onFilterClick, unreadCount }) => {
       
       <div className="flex items-center gap-4">
         <button
-          onClick={onFilterClick}
-          className="relative p-2 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors"
-        >
-          <Filter className="w-5 h-5 text-gray-700" />
-        </button>
-        
-        <button
           onClick={onBellClick}
           className="relative p-2 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors"
         >
@@ -329,20 +322,30 @@ const ReviewPieChart = ({ reviewData }) => {
   );
 };
 
-// SalesLineChart Component
+// Fixed SalesLineChart Component
 const SalesLineChart = ({ data, timeFrame }) => {
-  const maxValue = Math.max(...data.map(item => item.sales));
-  const minValue = Math.min(...data.map(item => item.sales));
+  const [hoveredPoint, setHoveredPoint] = useState(null);
+  
+  // Calculate chart values
+  const values = data.map(item => item.sales);
+  const maxValue = Math.max(...values);
+  const minValue = Math.min(...values);
   const range = maxValue - minValue || 1;
+  
+  // Chart dimensions
+  const chartHeight = 200;
+  const chartWidth = 100;
+  const padding = { top: 20, right: 10, bottom: 30, left: 10 };
   
   const getLabels = () => {
     switch (timeFrame) {
       case 'daily':
-        return ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
+        return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       case 'monthly':
-        return ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-      case 'yearly':
         return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      case 'yearly':
+        const currentYear = new Date().getFullYear();
+        return [`${currentYear-3}`, `${currentYear-2}`, `${currentYear-1}`, `${currentYear}`];
       default:
         return data.map(item => item.name);
     }
@@ -351,51 +354,230 @@ const SalesLineChart = ({ data, timeFrame }) => {
   const labels = getLabels();
   const chartData = data.slice(0, labels.length);
 
-  return (
-    <div className="relative h-64">
-      <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-        {[0, 25, 50, 75, 100].map((y, i) => (
-          <line key={i} x1="0" y1={y} x2="100" y2={y} stroke="#f0f0f0" strokeWidth="0.5" />
-        ))}
-        
-        {chartData.map((item, index) => {
-          const x = (index / (chartData.length - 1)) * 100;
-          const y = 100 - ((item.sales - minValue) / range) * 100;
-          
-          return (
-            <g key={index}>
-              <circle cx={x} cy={y} r="2" fill="#A68B69" />
-              <text x={x} y={y - 5} textAnchor="middle" fontSize="2" fill="#666">
-                {item.sales}
-              </text>
-            </g>
-          );
-        })}
-        
-        <polyline
-          fill="none"
-          stroke="url(#lineGradient)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          points={chartData.map((item, index) => {
-            const x = (index / (chartData.length - 1)) * 100;
-            const y = range > 0 ? 100 - ((item.sales - minValue) / range) * 100 : 50;
-            return `${x},${y}`;
-          }).join(' ')}
-        />
-        
-        <defs>
-          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#A68B69" />
-            <stop offset="100%" stopColor="#8a6e51" />
-          </linearGradient>
-        </defs>
-      </svg>
+  // Calculate points for the line
+  const points = chartData.map((item, index) => {
+    const x = padding.left + (index / (chartData.length - 1)) * (chartWidth - padding.left - padding.right);
+    const y = padding.top + chartHeight - ((item.sales - minValue) / range) * chartHeight;
+    return { x, y, ...item, index };
+  });
+
+  // Generate smooth path for the line
+  const generateSmoothPath = (points) => {
+    if (points.length < 2) return '';
+    
+    let path = `M ${points[0].x} ${points[0].y}`;
+    
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
       
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2">
-        {labels.map((label, index) => (
-          <div key={index} className="text-center text-xs text-gray-600">{label}</div>
-        ))}
+      // Calculate control points for smooth curves
+      const smoothness = 0.3;
+      const dx1 = prev.x + (curr.x - prev.x) * smoothness;
+      const dy1 = prev.y;
+      const dx2 = curr.x - (next ? (next.x - prev.x) * smoothness : 0);
+      const dy2 = curr.y;
+      
+      path += ` C ${dx1} ${dy1}, ${dx2} ${dy2}, ${curr.x} ${curr.y}`;
+    }
+    
+    return path;
+  };
+
+  // Generate area path
+  const generateAreaPath = (points) => {
+    if (points.length < 2) return '';
+    
+    const linePath = generateSmoothPath(points);
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1];
+    
+    return `${linePath} L ${lastPoint.x} ${chartHeight + padding.top} L ${firstPoint.x} ${chartHeight + padding.top} Z`;
+  };
+
+  // Format currency display
+  const formatCurrency = (amount) => {
+    return `₱${amount.toLocaleString()}`;
+  };
+
+  return (
+    <div className="relative">
+      {/* Chart Header with Summary */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-3 h-3 bg-gradient-to-r from-[#A68B69] to-[#8a6e51] rounded-full"></div>
+            <span className="text-sm font-medium text-gray-700">Sales Revenue</span>
+          </div>
+          <div className="text-2xl font-black text-gray-900">
+            {formatCurrency(maxValue)}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-sm text-gray-500">Peak</div>
+          <div className="text-lg font-semibold text-green-600">
+            +{Math.round(((maxValue - minValue) / minValue) * 100)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Main Chart */}
+      <div className="relative h-64 bg-gradient-to-b from-gray-50/50 to-white/30 rounded-2xl p-4 border border-gray-200/50">
+        {/* Y-axis labels */}
+        <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500 py-4">
+          <span>{formatCurrency(maxValue)}</span>
+          <span>{formatCurrency(Math.round((maxValue + minValue) / 2))}</span>
+          <span>{formatCurrency(minValue)}</span>
+        </div>
+
+        {/* Chart SVG */}
+        <div className="ml-12 h-full">
+          <svg 
+            viewBox={`0 0 ${chartWidth} ${chartHeight + padding.top + padding.bottom}`} 
+            className="w-full h-full"
+            preserveAspectRatio="none"
+          >
+            {/* Grid lines */}
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
+              <line 
+                key={i}
+                x1={padding.left} 
+                y1={padding.top + ratio * chartHeight} 
+                x2={chartWidth - padding.right} 
+                y2={padding.top + ratio * chartHeight} 
+                stroke="#f0f0f0" 
+                strokeWidth="0.5" 
+              />
+            ))}
+
+            {/* Area fill */}
+            <path
+              d={generateAreaPath(points)}
+              fill="url(#areaGradient)"
+              opacity="0.3"
+            />
+
+            {/* Main line */}
+            <path
+              d={generateSmoothPath(points)}
+              fill="none"
+              stroke="url(#lineGradient)"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Data points */}
+            {points.map((point, index) => (
+              <g key={index}>
+                <circle 
+                  cx={point.x} 
+                  cy={point.y} 
+                  r="3" 
+                  fill="white" 
+                  stroke="#A68B69"
+                  strokeWidth="2"
+                  className="cursor-pointer transition-all duration-200"
+                  onMouseEnter={() => setHoveredPoint(point)}
+                  onMouseLeave={() => setHoveredPoint(null)}
+                />
+                
+                {/* Hover effect */}
+                {hoveredPoint?.index === index && (
+                  <g>
+                    <line 
+                      x1={point.x} 
+                      y1={padding.top} 
+                      x2={point.x} 
+                      y2={chartHeight + padding.top} 
+                      stroke="#A68B69" 
+                      strokeWidth="1" 
+                      strokeDasharray="2,2"
+                      opacity="0.5"
+                    />
+                    <circle 
+                      cx={point.x} 
+                      cy={point.y} 
+                      r="6" 
+                      fill="#A68B69" 
+                      opacity="0.2"
+                    />
+                  </g>
+                )}
+              </g>
+            ))}
+
+            {/* Gradient definitions */}
+            <defs>
+              <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#A68B69" />
+                <stop offset="50%" stopColor="#8a6e51" />
+                <stop offset="100%" stopColor="#6d5940" />
+              </linearGradient>
+              
+              <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#A68B69" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#A68B69" stopOpacity="0.1" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+
+        {/* X-axis labels */}
+        <div className="flex justify-between mt-2 px-2 ml-12">
+          {labels.map((label, index) => (
+            <div 
+              key={index} 
+              className="text-xs text-gray-600 text-center flex-1"
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Hover Tooltip */}
+      {hoveredPoint && (
+        <div 
+          className="absolute bg-white/95 backdrop-blur-sm border border-gray-200/50 rounded-2xl p-4 shadow-2xl shadow-black/20 z-10 min-w-[140px] transform -translate-x-1/2 -translate-y-full"
+          style={{
+            left: `${(hoveredPoint.x / chartWidth) * 100}%`,
+            top: `${hoveredPoint.y - 10}px`
+          }}
+        >
+          <div className="text-center">
+            <div className="text-sm font-semibold text-gray-900 mb-1">
+              {labels[hoveredPoint.index]}
+            </div>
+            <div className="text-lg font-black text-[#A68B69]">
+              {formatCurrency(hoveredPoint.sales)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {hoveredPoint.index > 0 && (
+                <span className={hoveredPoint.sales > chartData[hoveredPoint.index - 1].sales ? 'text-green-600' : 'text-red-600'}>
+                  {hoveredPoint.sales > chartData[hoveredPoint.index - 1].sales ? '↑' : '↓'} 
+                  {Math.abs(Math.round(((hoveredPoint.sales - chartData[hoveredPoint.index - 1].sales) / chartData[hoveredPoint.index - 1].sales) * 100))}%
+                </span>
+              )}
+            </div>
+          </div>
+          
+          {/* Tooltip arrow */}
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-white border-r border-b border-gray-200/50 rotate-45"></div>
+        </div>
+      )}
+
+      {/* Chart Legend */}
+      <div className="flex items-center justify-center gap-6 mt-4 pt-4 border-t border-gray-200/50">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-0.5 bg-gradient-to-r from-[#A68B69] to-[#8a6e51] rounded-full"></div>
+          <span className="text-xs text-gray-600">Sales Trend</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-gradient-to-b from-[#A68B69]/30 to-[#A68B69]/10 rounded-sm"></div>
+          <span className="text-xs text-gray-600">Revenue Area</span>
+        </div>
       </div>
     </div>
   );
@@ -725,13 +907,16 @@ const setupNotificationListeners = (setNotifications) => {
   };
 };
 
-// Data fetching functions
+// Fixed Data fetching functions
 const fetchOrders = async (filters = {}) => {
   try {
     let q = collection(db, "orders");
-    if (filters.status) {
-      q = query(q, where("status", "==", filters.status));
+    
+    // If no specific status filter, get all orders
+    if (filters.status && filters.status !== "All Status") {
+      q = query(q, where("status", "==", filters.status.toLowerCase()));
     }
+    
     const querySnapshot = await getDocs(q);
     return querySnapshot.size;
   } catch (error) {
@@ -747,7 +932,10 @@ const fetchTotalRevenue = async (filters = {}) => {
     let totalRevenue = 0;
     querySnapshot.forEach((doc) => {
       const orderData = doc.data();
-      totalRevenue += parseFloat(orderData.total || orderData.amount || 0);
+      const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+      if (!isNaN(total)) {
+        totalRevenue += total;
+      }
     });
     return totalRevenue;
   } catch (error) {
@@ -756,31 +944,72 @@ const fetchTotalRevenue = async (filters = {}) => {
   }
 };
 
+// FIXED: Today's Sales function - only counts delivered and paid orders from today
 const fetchTodaysSales = async () => {
   try {
-    const q = query(collection(db, "orders"), where("payment", "==", "paid"));
-    const querySnapshot = await getDocs(q);
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Create timestamp objects for Firestore query
+    const todayStart = Timestamp.fromDate(today);
+    const todayEnd = Timestamp.fromDate(tomorrow);
+
+    // Query for orders that are delivered AND fully paid AND created today
+    const q = query(
+      collection(db, "orders"), 
+      where("status", "==", "delivered"),
+      where("payment", "==", "paid"),
+      where("createdAt", ">=", todayStart),
+      where("createdAt", "<", todayEnd)
+    );
+    
+    const querySnapshot = await getDocs(q);
     
     let todaysRevenue = 0;
     querySnapshot.forEach((doc) => {
       const orderData = doc.data();
-      const orderDate = orderData.createdAt ? orderData.createdAt.toDate() : new Date();
-      
-      if (orderDate >= today) {
-        todaysRevenue += parseFloat(orderData.total || orderData.amount || 0);
+      const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+      if (!isNaN(total)) {
+        todaysRevenue += total;
       }
     });
     
+    console.log("Today's delivered & paid revenue:", todaysRevenue, "from", querySnapshot.size, "orders");
     return todaysRevenue;
   } catch (error) {
     console.error("Error fetching today's sales:", error);
+    
+    // Fallback: Try a simpler approach if the timestamp query fails
     try {
-      const totalRevenue = await fetchTotalRevenue();
-      return totalRevenue * 0.1;
-    } catch {
+      const q = query(
+        collection(db, "orders"), 
+        where("status", "==", "delivered"),
+        where("payment", "==", "paid")
+      );
+      const querySnapshot = await getDocs(q);
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      let todaysRevenue = 0;
+      querySnapshot.forEach((doc) => {
+        const orderData = doc.data();
+        const orderDate = orderData.createdAt ? orderData.createdAt.toDate() : new Date();
+        
+        // Check if order was created today
+        if (orderDate >= today) {
+          const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+          if (!isNaN(total)) {
+            todaysRevenue += total;
+          }
+        }
+      });
+      
+      return todaysRevenue;
+    } catch (fallbackError) {
+      console.error("Fallback today's sales also failed:", fallbackError);
       return 0;
     }
   }
@@ -833,7 +1062,7 @@ const fetchSalesData = async (timeFrame) => {
     
     switch (timeFrame) {
       case 'daily':
-        const hours = ['12AM', '3AM', '6AM', '9AM', '12PM', '3PM', '6PM', '9PM'];
+        const hours = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         salesData = hours.map((hour, index) => ({
           name: hour,
           sales: Math.floor(Math.random() * 1000) + 500
@@ -841,7 +1070,7 @@ const fetchSalesData = async (timeFrame) => {
         break;
         
       case 'monthly':
-        const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+        const weeks = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         salesData = weeks.map((week, index) => ({
           name: week,
           sales: Math.floor(Math.random() * 5000) + 2000
@@ -849,7 +1078,7 @@ const fetchSalesData = async (timeFrame) => {
         break;
         
       case 'yearly':
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const months = ['2022', '2023', '2024', '2025'];
         salesData = months.map((month, index) => ({
           name: month,
           sales: Math.floor(Math.random() * 15000) + 8000
@@ -907,6 +1136,8 @@ export default function Index() {
           fetchReviews(),
           fetchTodaysSales()
         ]);
+        
+        console.log("Fetched data:", { orders, revenue, products, todaysSales });
         
         setDashboardData({
           totalProducts: products.toString(),
