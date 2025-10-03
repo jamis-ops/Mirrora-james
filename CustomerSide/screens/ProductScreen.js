@@ -233,21 +233,7 @@ export default function ProductScreen() {
     navigation.navigate("CustomizationScreen", { product });
   };
 
-  // Handle Write Review button press
-  const handleWriteReview = () => {
-    if (!auth.currentUser) {
-      Toast.show({
-        type: "error",
-        text1: "Login Required",
-        text2: "Please sign in to write a review.",
-        position: "top",
-      });
-      return;
-    }
-    navigation.navigate("ReviewScreen", { 
-      productInfo: product 
-    });
-  };
+
 
   // Handle View All Reviews press
   const handleViewAllReviews = () => {
@@ -311,12 +297,6 @@ export default function ProductScreen() {
                 {averageRating} ({totalReviews} reviews)
               </Text>
             </View>
-            <TouchableOpacity 
-              style={styles.writeReviewButton}
-              onPress={handleWriteReview}
-            >
-              <Text style={styles.writeReviewText}>Write a Review</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Customization link */}
@@ -461,17 +441,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
     marginLeft: 8,
-  },
-  writeReviewButton: {
-    backgroundColor: '#F3EFE9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  writeReviewText: {
-    fontFamily: "Montserrat_600SemiBold",
-    fontSize: 12,
-    color: "#A68B69",
   },
   customizeLink: { marginBottom: 15 },
   customizeText: {

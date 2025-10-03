@@ -80,16 +80,16 @@ const ChatScreen = () => {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setUserName(userData.fullName || userData.firstName || userData.name || 'User');
+            setUserName(userData.fullName || userData.firstName || userData.name || currentUser.displayName || 'User');
           } else {
-            setUserName('User');
+            setUserName(currentUser.displayName || 'User');
           }
         } catch (error) {
           console.error("Error fetching user data: ", error);
           if (error.code === 'resource-exhausted') {
             Alert.alert('Quota Exceeded', 'Firestore quota limit reached. User data may not display correctly.');
           }
-          setUserName('User');
+          setUserName(currentUser.displayName || 'User');
         }
       } else {
         setUser(null);

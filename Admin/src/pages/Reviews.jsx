@@ -32,6 +32,7 @@ import {
   serverTimestamp,
   addDoc,
 } from "firebase/firestore";
+import { useParams } from 'react-router-dom';
 
 const REVIEWS_PER_PAGE = 10;
 
@@ -60,6 +61,8 @@ function Reviews() {
   const [selectedProduct, setSelectedProduct] = useState("all");
   const [sortBy, setSortBy] = useState("date");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedReview, setSelectedReview] = useState(null);
+  const { reviewId } = useParams();
 
   useEffect(() => {
     const q = query(collection(db, "reviews"), orderBy("createdAt", "desc"));
@@ -130,6 +133,16 @@ function Reviews() {
     };
   }, []);
 
+  // Select review based on URL param
+  useEffect(() => {
+    if (reviewId && reviews.length > 0) {
+      const review = reviews.find(r => r.id === reviewId);
+      if (review) {
+        setSelectedReview(review);
+      }
+    }
+  }, [reviewId, reviews]);
+
   useEffect(() => {
     let results = reviews;
 
@@ -187,6 +200,9 @@ function Reviews() {
         isVisible: !currentVisibility,
         updatedAt: serverTimestamp(),
       });
+      if (selectedReview && selectedReview.id === id) {
+        setSelectedReview(prev => ({ ...prev, isVisible: !currentVisibility }));
+      }
     } catch (error) {
       console.error("Error toggling review visibility:", error);
       alert("Failed to update review visibility");
@@ -615,9 +631,13 @@ function Reviews() {
                       {review.isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                       {review.isVisible ? "Hide" : "Show"}
                     </button>
-                    <div className="text-xs text-[#CAC8C5]">
-                      ID: {review.id.substring(0, 8)}...
-                    </div>
+                    <button 
+                      onClick={() => setSelectedReview(review)}
+                      className="text-[#A68B69] hover:text-[#8a7456] font-medium text-sm flex items-center gap-1"
+                    >
+                      <Eye size={16} />
+                      View Details
+                    </button>
                   </div>
                 </div>
               </div>
@@ -713,6 +733,108 @@ function Reviews() {
           </div>
         )}
       </div>
+
+      {/* Selected Review Modal */}
+      {selectedReview && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Review Details</h2>
+              <button 
+                onClick={() => setSelectedReview(null)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={24} className="text-gray-600" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Header Info */}
+              <div className="flex items-start gap-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-[#A68B69] to-[#8a7456] rounded-full flex items-center justify-center text-white font-bold text-xl shadow-md">
+                  {selectedReview.avatar}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900">{selectedReview.userName}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex gap-1">{renderStars(selectedReview.rating)}</div>
+                    <span className="text-lg font-bold text-gray-800">{selectedReview.rating}.0</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-sm text-gray-500 mt-2">
+                    <Calendar size={16} />
+                    <span>{formatDate(selectedReview.createdAt)}</span>
+                    <span>•</span>
+                    <Clock size={16} />
+                    <span>{formatTime(selectedReview.createdAt)}</span>
+                  </div>
+                </div>
+                <div
+                  className={`px-4 py-2 rounded-full font-medium flex items-center gap-2 ${
+                    selectedReview.isVisible
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
+                  }`}
+                >
+                  {selectedReview.isVisible ? <CheckCircle size={20} /> : <XCircle size={20} />}
+                  {selectedReview.isVisible ? "Visible" : "Hidden"}
+                </div>
+              </div>
+
+              {/* Comment */}
+              <div className="bg-gray-50 p-4 rounded-xl">
+                <p className="text-gray-800 leading-relaxed">"{selectedReview.comment}"</p>
+              </div>
+
+              {/* Product and Order Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedReview.productInfo && (
+                  <div className="bg-[#F9F9F9] p-4 rounded-xl border border-[#E6E6E6]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Package size={20} className="text-[#A68B69]" />
+                      <h4 className="font-semibold text-gray-900">Product</h4>
+                    </div>
+                    <p className="text-gray-800 font-medium">{selectedReview.productInfo.name}</p>
+                    {selectedReview.productInfo.size && (
+                      <p className="text-sm text-gray-600 mt-1">Size: {selectedReview.productInfo.size}</p>
+                    )}
+                  </div>
+                )}
+                {selectedReview.orderId && (
+                  <div className="bg-[#F9F9F9] p-4 rounded-xl border border-[#E6E6E6]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MessageSquare size={20} className="text-[#A68B69]" />
+                      <h4 className="font-semibold text-gray-900">Order ID</h4>
+                    </div>
+                    <p className="text-gray-800 font-medium">#{selectedReview.orderId}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    toggleVisibility(selectedReview.id, selectedReview.isVisible);
+                  }}
+                  className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
+                    selectedReview.isVisible
+                      ? "bg-[#A68B69] text-white hover:bg-[#8a7456]"
+                      : "bg-green-600 text-white hover:bg-green-700"
+                  }`}
+                >
+                  {selectedReview.isVisible ? "Hide Review" : "Show Review"}
+                </button>
+                <button
+                  onClick={() => setSelectedReview(null)}
+                  className="flex-1 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -446,15 +446,6 @@ export default function HomeScreen({ route }) {
             <Text style={styles.sectionTitle}>
               {selectedCategory === "All" ? "Popular" : selectedCategory}
             </Text>
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate("ProductListScreen", {
-                  category: selectedCategory === "All" ? "Most Popular" : selectedCategory,
-                })
-              }
-            >
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
           </View>
 
           {isLoading ? (
@@ -678,14 +669,13 @@ const styles = StyleSheet.create({
   activeDot: { backgroundColor: "#A68B69" },
   sectionHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     alignItems: "center",
     paddingHorizontal: 20,
     marginTop: 25,
     marginBottom: 10,
   },
   sectionTitle: { fontFamily: "LeagueSpartan_700Bold", fontSize: 20, color: "#000" },
-  seeAllText: { fontFamily: "Montserrat_400Regular", color: "#A68B69" },
   productRow: { justifyContent: "space-between", paddingHorizontal: 15, marginBottom: 10 },
   productCard: {
     width: "47%",

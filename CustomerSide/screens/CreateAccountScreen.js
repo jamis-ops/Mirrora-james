@@ -18,8 +18,9 @@ import DateTimePickerModal from 'react-native-modal-datetime-picker';
 
 // --- Firebase Imports ---
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from 'firebase/auth';
+import { doc, setDoc } from "firebase/firestore";
 // Make sure this path is correct for your project
-import { auth } from '../Backend/firebaseConfig';
+import { auth, db } from '../Backend/firebaseConfig';
 
 // Font imports
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
@@ -227,6 +228,7 @@ export default function CreateAccountScreen({ navigation }) {
             year: 'numeric',
         });
         setBirthDate(formattedDate);
+        setSelectedDate(date);
         setShowDatePicker(false);
     };
 
@@ -329,6 +331,21 @@ export default function CreateAccountScreen({ navigation }) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
         await updateProfile(userCredential.user, { displayName: fullName });
+
+        await setDoc(doc(db, "user", userCredential.user.uid), {
+            uid: userCredential.user.uid,
+            firstName,
+            middleInitial,
+            lastName,
+            fullName,
+            email,
+            phoneNumber,
+            address,
+            birthDate,
+            gender,
+            createdAt: new Date(),
+            verified: false, // optional: track email verification
+            }); 
 
         // Send email verification
         await sendEmailVerification(userCredential.user);
@@ -463,7 +480,7 @@ export default function CreateAccountScreen({ navigation }) {
                                     setFocusedInput('birthDate');
                                 }}
                             >
-                                <Text style={[styles.dropdownText, birthDate === '' && styles.placeholderText]}>
+                                <Text style={[styles.dropdownText, !birthDate && styles.placeholderText]}>
                                     {birthDate || "MM/DD/YYYY"}
                                 </Text>
                                 <Icon name="calendar-month" size={20} color="#A1866F" />
@@ -512,6 +529,7 @@ export default function CreateAccountScreen({ navigation }) {
                                 onChangeText={setAddress}
                                 onFocus={() => setFocusedInput('address')}
                                 onBlur={() => setFocusedInput(null)}
+                                multiline={true}
                             />
                         </View>
                     </>
@@ -660,7 +678,8 @@ export default function CreateAccountScreen({ navigation }) {
                 onConfirm={handleDateConfirm}
                 onCancel={handleDateCancel}
                 date={selectedDate}
-                maximumDate={new Date()} // Prevents selecting a future date
+                maximumDate={new Date()}
+                display="default"
             />
         </View>
     );

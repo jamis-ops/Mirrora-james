@@ -1,5 +1,3 @@
-// src/App.jsx
-
 import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index.jsx";
@@ -38,6 +36,8 @@ export default function App() {
             <Route path="banners" element={<Banners />} />
             {/* Route for the messages page */}
             <Route path="messages" element={<Messages />} />
+            {/* New route to handle specific chat IDs, assuming Messages component can handle chatId */}
+            <Route path="messages/:threadId" element={<Messages />} />
             {/* Route for the FAQ management page */}
             <Route path="faq" element={<FAQ />} />
             {/* Route for the Reviews management page */}

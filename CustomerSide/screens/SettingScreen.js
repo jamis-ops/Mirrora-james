@@ -11,129 +11,200 @@ import {
     Modal,
     TextInput,
     StatusBar,
+    Alert,
 } from 'react-native';
 import { useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useFonts as useMontserrat, Montserrat_400Regular, Montserrat_600SemiBold } from "@expo-google-fonts/montserrat";
 import { useFonts as useLeagueSpartan, LeagueSpartan_700Bold } from "@expo-google-fonts/league-spartan";
-import { getAuth } from "firebase/auth";
+import { getAuth, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { doc, getDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from "../Backend/firebaseConfig";
 import { deleteUser } from "firebase/auth";
-
-
 
 const SettingsScreen = () => {
     const navigation = useNavigation();
     const [isLoading, setIsLoading] = useState(true);
     const [showAccountInfo, setShowAccountInfo] = useState(false);
-    const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
-    const [showAddCardModal, setShowAddCardModal] = useState(false);
-
+    const [showChangePassword, setShowChangePassword] = useState(false);
     const [currentTab, setCurrentTab] = useState('accountData');
+    
+    // Account Info States
     const [accountEmail, setAccountEmail] = useState('');
-    const [accountName, setAccountName] = useState('');
     const [accountFirstName, setAccountFirstName] = useState('');
     const [accountLastName, setAccountLastName] = useState('');
     const [accountPhoneNumber, setAccountPhoneNumber] = useState('');
+    
+    // Change Password States
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [passwordErrors, setPasswordErrors] = useState({
+        current: '',
+        new: '',
+        confirm: ''
+    });
 
-const saveAccountInfo = async () => {
-    try {
-        const auth = getAuth();
-        const userId = auth.currentUser.uid; // <-- real user ID
-        const userRef = doc(db, "users", userId);
-
-        await setDoc(
-            userRef,
-            {
-                email: accountEmail,
-                firstName: accountFirstName,
-                lastName: accountLastName,
-                phoneNumber: accountPhoneNumber,
-            },
-            { merge: true } // prevents overwriting other fields
-        );
-
-        alert("Account info saved successfully!");
-        setShowAccountInfo(false);
-    } catch (error) {
-        console.log("Error saving account info:", error);
-        alert("Failed to save account info.");
-    }
-};
-
-    useEffect(() => {
-    const fetchAccountInfo = async () => {
+    const saveAccountInfo = async () => {
         try {
             const auth = getAuth();
-            const userId = auth.currentUser.uid; // <-- get real user ID
-            const userRef = doc(db, "users", userId);
-            const userSnap = await getDoc(userRef);
+            const userId = auth.currentUser.uid;
+            const userRef = doc(db, "user", userId);
 
-            if (userSnap.exists()) {
-                const data = userSnap.data();
-                setAccountEmail(data.email || "");
-                setAccountFirstName(data.firstName || "");
-                setAccountLastName(data.lastName || "");
-                setAccountPhoneNumber(data.phoneNumber || "");
-            }
+            await setDoc(
+                userRef,
+                {
+                    email: accountEmail,
+                    firstName: accountFirstName,
+                    lastName: accountLastName,
+                    phoneNumber: accountPhoneNumber,
+                },
+                { merge: true }
+            );
+
+            alert("Account info saved successfully!");
+            setShowAccountInfo(false);
         } catch (error) {
-            console.log("Error fetching account info:", error);
+            console.log("Error saving account info:", error);
+            alert("Failed to save account info.");
         }
     };
 
-    if (showAccountInfo) fetchAccountInfo();
-}, [showAccountInfo]);
+    useEffect(() => {
+        const fetchAccountInfo = async () => {
+            try {
+                const auth = getAuth();
+                const userId = auth.currentUser.uid;
+                const userRef = doc(db, "user", userId);
+                const userSnap = await getDoc(userRef);
 
-const deleteAccount = async () => {
-    try {
-        const auth = getAuth();
-        const user = auth.currentUser;
+                if (userSnap.exists()) {
+                    const data = userSnap.data();
+                    setAccountEmail(data.email || "");
+                    setAccountFirstName(data.firstName || "");
+                    setAccountLastName(data.lastName || "");
+                    setAccountPhoneNumber(data.phoneNumber || "");
+                }
+            } catch (error) {
+                console.log("Error fetching account info:", error);
+            }
+        };
 
-        if (!user) {
-            alert("No user logged in.");
+        if (showAccountInfo) fetchAccountInfo();
+    }, [showAccountInfo]);
+
+    const deleteAccount = async () => {
+        try {
+            const auth = getAuth();
+            const user = auth.currentUser;
+
+            if (!user) {
+                alert("No user logged in.");
+                return;
+            }
+
+            const userId = user.uid;
+
+            // Delete Firestore document
+            await deleteDoc(doc(db, "user", userId));
+
+            // Delete Firebase Auth account
+            await deleteUser(user);
+
+            alert("Account deleted successfully!");
+            navigation.reset({
+                index: 0,
+                routes: [{ name: "SignIn" }],
+            });
+
+        } catch (error) {
+            console.log("Error deleting account:", error);
+            alert("Failed to delete account. You may need to re-login and try again.");
+        }
+    };
+
+    const validatePasswordForm = () => {
+        const errors = {
+            current: '',
+            new: '',
+            confirm: ''
+        };
+
+        if (!currentPassword) {
+            errors.current = 'Current password is required';
+        }
+
+        if (!newPassword) {
+            errors.new = 'New password is required';
+        } else if (newPassword.length < 6) {
+            errors.new = 'Password must be at least 6 characters';
+        }
+
+        if (!confirmPassword) {
+            errors.confirm = 'Please confirm your new password';
+        } else if (newPassword !== confirmPassword) {
+            errors.confirm = 'Passwords do not match';
+        }
+
+        setPasswordErrors(errors);
+        return !errors.current && !errors.new && !errors.confirm;
+    };
+
+    const handleChangePassword = async () => {
+        if (!validatePasswordForm()) {
             return;
         }
 
-        const userId = user.uid;
+        setIsChangingPassword(true);
+        try {
+            const auth = getAuth();
+            const user = auth.currentUser;
 
-        // Delete Firestore document
-        await deleteDoc(doc(db, "users", userId));
+            if (!user || !user.email) {
+                Alert.alert('Error', 'No user logged in.');
+                return;
+            }
 
-        // Delete Firebase Auth account
-        await deleteUser(user);
+            // Re-authenticate user
+            const credential = EmailAuthProvider.credential(user.email, currentPassword);
+            await reauthenticateWithCredential(user, credential);
 
-        alert("Account deleted successfully!");
-        // Optionally navigate back to login or splash screen
-        navigation.reset({
-            index: 0,
-            routes: [{ name: "SignIn" }], // replace with your login screen
-        });
+            // Update password
+            await updatePassword(user, newPassword);
 
-    } catch (error) {
-        console.log("Error deleting account:", error);
-        alert("Failed to delete account. You may need to re-login and try again.");
-    }
-};
-
-    // New states for the add card form
-    const [cardName, setCardName] = useState('');
-    const [cardNumber, setCardNumber] = useState('');
-    const [cardExpiry, setCardExpiry] = useState('');
-    const [cardCVC, setCardCVC] = useState('');
-
-    // Notification Modal States
-    const [showNotificationModal, setShowNotificationModal] = useState(false);
-    const [systemEmail, setSystemEmail] = useState(true);
-    const [systemSms, setSystemSms] = useState(false);
-    const [marketingEmail, setMarketingEmail] = useState(true);
-    const [marketingSms, setMarketingSms] = useState(false);
-
-    const [showHelpSupportModal, setShowHelpSupportModal] = useState(false);
-    const [faqExpanded, setFaqExpanded] = useState(null);
-    const [helpName, setHelpName] = useState('');
-    const [helpEmail, setHelpEmail] = useState('');
-    const [helpMessage, setHelpMessage] = useState('');
+            Alert.alert('Success', 'Password changed successfully!');
+            
+            // Reset form and close modal
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            setPasswordErrors({ current: '', new: '', confirm: '' });
+            setShowChangePassword(false);
+            
+        } catch (error) {
+            console.log('Error changing password:', error);
+            
+            // Handle specific Firebase auth errors
+            if (error.code === 'auth/wrong-password') {
+                setPasswordErrors(prev => ({
+                    ...prev,
+                    current: 'Current password is incorrect'
+                }));
+            } else if (error.code === 'auth/requires-recent-login') {
+                Alert.alert('Error', 'For security reasons, please log in again before changing your password.');
+            } else if (error.code === 'auth/weak-password') {
+                setPasswordErrors(prev => ({
+                    ...prev,
+                    new: 'Password is too weak. Please choose a stronger password.'
+                }));
+            } else {
+                Alert.alert('Error', 'Failed to change password. Please try again.');
+            }
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
 
     const [montserratLoaded] = useMontserrat({ Montserrat_400Regular, Montserrat_600SemiBold });
     const [leagueSpartanLoaded] = useLeagueSpartan({ LeagueSpartan_700Bold });
@@ -149,12 +220,13 @@ const deleteAccount = async () => {
         const theme = {
             backgroundPrimary: '#F8F8F8',
             backgroundSecondary: '#FFFFFF',
-            textPrimary: '#1F2937', // Darker gray for primary text
-            textSecondary: '#6B7280', // Medium gray for secondary text
-            accent: '#C76A51', // Warm Terracotta
-            border: '#E5E7EB', // Lighter gray for borders
+            textPrimary: '#1F2937',
+            textSecondary: '#6B7280',
+            accent: '#C76A51',
+            border: '#E5E7EB',
             deleteButtonText: '#EF4444',
             deleteButtonBg: '#FEE2E2',
+            error: '#DC2626',
         };
 
         return StyleSheet.create({
@@ -217,10 +289,9 @@ const deleteAccount = async () => {
             },
             settingsSection: {
                 backgroundColor: theme.backgroundSecondary,
-                borderRadius: 20, // Increased corner radius for a softer look
+                borderRadius: 20,
                 marginBottom: 25,
                 overflow: 'hidden',
-                // Added drop shadow for a layered effect
                 ...Platform.select({
                     ios: {
                         shadowColor: '#000',
@@ -356,6 +427,16 @@ const deleteAccount = async () => {
                 borderWidth: 1,
                 borderColor: theme.border,
             },
+            errorInput: {
+                borderColor: theme.error,
+            },
+            errorText: {
+                fontFamily: 'Montserrat_400Regular',
+                fontSize: 12,
+                color: theme.error,
+                marginTop: 4,
+                marginLeft: 4,
+            },
             deleteSection: {
                 marginTop: 40,
                 paddingTop: 20,
@@ -394,60 +475,31 @@ const deleteAccount = async () => {
             saveButton: {
                 backgroundColor: theme.accent,
                 paddingVertical: 16,
-                borderRadius: 25, // More rounded, pill-like shape
+                borderRadius: 25,
                 alignItems: 'center',
+            },
+            saveButtonDisabled: {
+                backgroundColor: theme.textSecondary,
+                opacity: 0.6,
             },
             saveButtonText: {
                 fontFamily: 'Montserrat_600SemiBold',
                 fontSize: 16,
                 color: '#fff',
             },
-            // Payment Method Modal specific styles
-            paymentMethodContent: {
-                flex: 1,
-                justifyContent: 'center',
-                alignItems: 'center',
-                paddingHorizontal: 20,
-                backgroundColor: theme.backgroundPrimary,
+            passwordRequirements: {
+                marginTop: 8,
+                padding: 12,
+                backgroundColor: theme.backgroundSecondary,
+                borderRadius: 8,
+                borderLeftWidth: 3,
+                borderLeftColor: theme.accent,
             },
-            paymentCardIcon: {
-                marginBottom: 20,
-            },
-            noCardTitle: {
-                fontFamily: 'Montserrat_600SemiBold',
-                fontSize: 20,
-                color: theme.textPrimary,
-                marginBottom: 10,
-                textAlign: 'center',
-            },
-            noCardDescription: {
+            requirementText: {
                 fontFamily: 'Montserrat_400Regular',
-                fontSize: 15,
+                fontSize: 12,
                 color: theme.textSecondary,
-                textAlign: 'center',
-                marginBottom: 30,
-                lineHeight: 22,
-            },
-            addCardButton: {
-                backgroundColor: theme.accent,
-                paddingVertical: 16,
-                paddingHorizontal: 40,
-                borderRadius: 25,
-                alignItems: 'center',
-            },
-            addCardButtonText: {
-                fontFamily: 'Montserrat_600SemiBold',
-                fontSize: 16,
-                color: '#fff',
-            },
-            // New styles for the Add Card screen layout
-            cardInfoRow: {
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                marginBottom: 20,
-            },
-            cardInfoInputGroup: {
-                width: '48%',
+                lineHeight: 16,
             },
         });
     };
@@ -516,7 +568,6 @@ const deleteAccount = async () => {
                             placeholder="First Name"
                             editable={false}
                             selectTextOnFocus={false}
-
                         />
                     </View>
                     <View style={themedStyles.inputGroup}>
@@ -545,78 +596,102 @@ const deleteAccount = async () => {
         }
     };
 
-    const renderAddCardModalContent = () => {
-        return (
-            <View style={themedStyles.modalContainer}>
-                <View style={themedStyles.modalHeader}>
-                    <TouchableOpacity onPress={() => setShowAddCardModal(false)} style={themedStyles.modalBackButton}>
-                        <Icon name="chevron-left" size={24} color={themedStyles.textPrimary} />
-                    </TouchableOpacity>
-                    <Text style={themedStyles.modalHeaderTitle}>Add new card</Text>
-                    <View style={themedStyles.modalHeaderSpacer} />
-                </View>
-                <ScrollView style={themedStyles.modalScrollView} showsVerticalScrollIndicator={false}>
-                    <View style={themedStyles.tabContent}>
-                        <View style={themedStyles.inputGroup}>
-                            <Text style={themedStyles.label}>Name on card</Text>
-                            <TextInput
-                                style={themedStyles.input}
-                                value={cardName}
-                                onChangeText={setCardName}
-                                placeholder="Julie Utrera"
-                                placeholderTextColor={themedStyles.textSecondary}
-                                keyboardType="default"
-                            />
-                        </View>
-                        <View style={themedStyles.inputGroup}>
-                            <Text style={themedStyles.label}>Card Number</Text>
-                            <TextInput
-                                style={themedStyles.input}
-                                value={cardNumber}
-                                onChangeText={setCardNumber}
-                                placeholder="0000 0000 0000 0000"
-                                placeholderTextColor={themedStyles.textSecondary}
-                                keyboardType="numeric"
-                                maxLength={16}
-                            />
-                        </View>
-                        <View style={themedStyles.cardInfoRow}>
-                            <View style={themedStyles.cardInfoInputGroup}>
-                                <Text style={themedStyles.label}>MM/YY</Text>
-                                <TextInput
-                                    style={themedStyles.input}
-                                    value={cardExpiry}
-                                    onChangeText={setCardExpiry}
-                                    placeholder="MM/YY"
-                                    placeholderTextColor={themedStyles.textSecondary}
-                                    keyboardType="numeric"
-                                    maxLength={5}
-                                />
-                            </View>
-                            <View style={themedStyles.cardInfoInputGroup}>
-                                <Text style={themedStyles.label}>CVC</Text>
-                                <TextInput
-                                    style={themedStyles.input}
-                                    value={cardCVC}
-                                    onChangeText={setCardCVC}
-                                    placeholder="CVC"
-                                    placeholderTextColor={themedStyles.textSecondary}
-                                    keyboardType="numeric"
-                                    secureTextEntry
-                                    maxLength={4}
-                                />
-                            </View>
-                        </View>
-                    </View>
-                </ScrollView>
-                <View style={themedStyles.saveButtonContainer}>
-                    <TouchableOpacity style={themedStyles.saveButton}>
-                        <Text style={themedStyles.saveButtonText}>Add new card</Text>
-                    </TouchableOpacity>
-                </View>
+    const renderChangePasswordModal = () => (
+        <View style={themedStyles.modalContainer}>
+            <View style={themedStyles.modalHeader}>
+                <TouchableOpacity onPress={() => setShowChangePassword(false)} style={themedStyles.modalBackButton}>
+                    <Icon name="chevron-left" size={24} color={themedStyles.textPrimary} />
+                </TouchableOpacity>
+                <Text style={themedStyles.modalHeaderTitle}>Change Password</Text>
+                <View style={themedStyles.modalHeaderSpacer} />
             </View>
-        );
-    };
+            
+            <ScrollView style={themedStyles.modalScrollView} showsVerticalScrollIndicator={false}>
+                <View style={themedStyles.tabContent}>
+                    <View style={themedStyles.inputGroup}>
+                        <Text style={themedStyles.label}>Current Password</Text>
+                        <TextInput
+                            style={[
+                                themedStyles.input,
+                                passwordErrors.current && themedStyles.errorInput
+                            ]}
+                            value={currentPassword}
+                            onChangeText={setCurrentPassword}
+                            placeholder="Enter your current password"
+                            placeholderTextColor={themedStyles.textSecondary}
+                            secureTextEntry
+                            autoCapitalize="none"
+                        />
+                        {passwordErrors.current ? (
+                            <Text style={themedStyles.errorText}>{passwordErrors.current}</Text>
+                        ) : null}
+                    </View>
+
+                    <View style={themedStyles.inputGroup}>
+                        <Text style={themedStyles.label}>New Password</Text>
+                        <TextInput
+                            style={[
+                                themedStyles.input,
+                                passwordErrors.new && themedStyles.errorInput
+                            ]}
+                            value={newPassword}
+                            onChangeText={setNewPassword}
+                            placeholder="Enter new password"
+                            placeholderTextColor={themedStyles.textSecondary}
+                            secureTextEntry
+                            autoCapitalize="none"
+                        />
+                        {passwordErrors.new ? (
+                            <Text style={themedStyles.errorText}>{passwordErrors.new}</Text>
+                        ) : null}
+                    </View>
+
+                    <View style={themedStyles.inputGroup}>
+                        <Text style={themedStyles.label}>Confirm New Password</Text>
+                        <TextInput
+                            style={[
+                                themedStyles.input,
+                                passwordErrors.confirm && themedStyles.errorInput
+                            ]}
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            placeholder="Confirm new password"
+                            placeholderTextColor={themedStyles.textSecondary}
+                            secureTextEntry
+                            autoCapitalize="none"
+                        />
+                        {passwordErrors.confirm ? (
+                            <Text style={themedStyles.errorText}>{passwordErrors.confirm}</Text>
+                        ) : null}
+                    </View>
+
+                    <View style={themedStyles.passwordRequirements}>
+                        <Text style={themedStyles.requirementText}>
+                            • Password must be at least 6 characters long{'\n'}
+                            • Use a combination of letters, numbers, and symbols for better security
+                        </Text>
+                    </View>
+                </View>
+            </ScrollView>
+
+            <View style={themedStyles.saveButtonContainer}>
+                <TouchableOpacity 
+                    style={[
+                        themedStyles.saveButton,
+                        isChangingPassword && themedStyles.saveButtonDisabled
+                    ]}
+                    onPress={handleChangePassword}
+                    disabled={isChangingPassword}
+                >
+                    {isChangingPassword ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <Text style={themedStyles.saveButtonText}>Change Password</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
 
     return (
         <SafeAreaView style={themedStyles.safeArea}>
@@ -645,27 +720,9 @@ const deleteAccount = async () => {
                                 themeStyles={themedStyles}
                             />
                             <SettingsItem
-                                icon="credit-card-outline"
-                                title="Payment Methods"
-                                onPress={() => setShowPaymentMethodModal(true)}
-                                themeStyles={themedStyles}
-                            />
-                            <SettingsItem
-                                icon="bell-outline"
-                                title="Notification"
-                                onPress={() => setShowNotificationModal(true)}
-                                themeStyles={themedStyles}
-                                isLast={true}
-                            />
-                        </View>
-
-                        {/* Help & Support Section */}
-                        <SectionHeader title="Help & Support" themeStyles={themedStyles} />
-                        <View style={themedStyles.settingsSection}>
-                            <SettingsItem
-                                icon="help-circle-outline"
-                                title="Help Center"
-                                onPress={() => setShowHelpSupportModal(true)}
+                                icon="lock-outline"
+                                title="Change Password"
+                                onPress={() => setShowChangePassword(true)}
                                 themeStyles={themedStyles}
                                 isLast={true}
                             />
@@ -718,235 +775,21 @@ const deleteAccount = async () => {
                     </SafeAreaView>
                 </Modal>
 
-                {/* Payment Methods Modal */}
+                {/* Change Password Modal */}
                 <Modal
                     animationType="slide"
                     transparent={false}
-                    visible={showPaymentMethodModal}
-                    onRequestClose={() => setShowPaymentMethodModal(false)}
+                    visible={showChangePassword}
+                    onRequestClose={() => setShowChangePassword(false)}
                 >
                     <SafeAreaView style={themedStyles.modalSafeArea}>
                         <StatusBar barStyle={"dark-content"} backgroundColor={'#F8F8F8'} />
-                        <View style={themedStyles.modalContainer}>
-                            <View style={themedStyles.modalHeader}>
-                                <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)} style={themedStyles.modalBackButton}>
-                                    <Icon name="chevron-left" size={24} color={themedStyles.textPrimary} />
-                                </TouchableOpacity>
-                                <Text style={themedStyles.modalHeaderTitle}>Payment Methods</Text>
-                                <View style={themedStyles.modalHeaderSpacer} />
-                            </View>
-                            <View style={themedStyles.paymentMethodContent}>
-                                <Icon name="credit-card-off-outline" size={72} color={themedStyles.textSecondary} style={themedStyles.paymentCardIcon} />
-                                <Text style={themedStyles.noCardTitle}>No cards yet!</Text>
-                                <Text style={themedStyles.noCardDescription}>
-                                    Looks like you haven't added any payment methods yet. Add a card to make purchases.
-                                </Text>
-                                <TouchableOpacity style={themedStyles.addCardButton} onPress={() => { setShowPaymentMethodModal(false); setShowAddCardModal(true); }}>
-                                    <Text style={themedStyles.addCardButtonText}>Add a card</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
+                        {renderChangePasswordModal()}
                     </SafeAreaView>
                 </Modal>
-
-                {/* Add Card Modal */}
-                <Modal
-                    animationType="slide"
-                    transparent={false}
-                    visible={showAddCardModal}
-                    onRequestClose={() => setShowAddCardModal(false)}
-                >
-                    <SafeAreaView style={themedStyles.modalSafeArea}>
-                        <StatusBar barStyle={"dark-content"} backgroundColor={'#F8F8F8'} />
-                        {renderAddCardModalContent()}
-                    </SafeAreaView>
-                </Modal>
-
-                {/* Notification Modal */}
-                <Modal
-                    animationType="slide"
-                    transparent={false}
-                    visible={showNotificationModal}
-                    onRequestClose={() => setShowNotificationModal(false)}
-                >
-                    <SafeAreaView style={themedStyles.modalSafeArea}>
-                        <StatusBar barStyle={"dark-content"} backgroundColor={'#F8F8F8'} />
-                        <View style={themedStyles.modalContainer}>
-                            {/* Header */}
-                            <View style={themedStyles.modalHeader}>
-                                <TouchableOpacity onPress={() => setShowNotificationModal(false)} style={themedStyles.modalBackButton}>
-                                    <Icon name="chevron-left" size={24} color={themedStyles.textPrimary} />
-                            </TouchableOpacity>
-                            <Text style={themedStyles.modalHeaderTitle}>Notification</Text>
-                            <View style={themedStyles.modalHeaderSpacer} />
-                        </View>
-
-                        <ScrollView style={themedStyles.modalScrollView} contentContainerStyle={{ padding: 20 }}>
-                            {/* System Notification */}
-                            <View style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: themedStyles.border, paddingBottom: 16 }}>
-                                <Text style={{ fontFamily: "Montserrat_600SemiBold", fontSize: 16, color: themedStyles.textPrimary, marginBottom: 6 }}>
-                                    System Notification
-                                </Text>
-                                <Text style={{ fontFamily: "Montserrat_400Regular", fontSize: 14, color: themedStyles.textSecondary, marginBottom: 12 }}>
-                                    Receive notification about the latest news & system updates from us.
-                                </Text>
-
-                                <View style={themedStyles.settingsItem}>
-                                    <Text style={themedStyles.settingsItemText}>Email</Text>
-                                    <TouchableOpacity onPress={() => setSystemEmail(!systemEmail)}>
-                                        <Icon
-                                            name={systemEmail ? "toggle-switch" : "toggle-switch-off-outline"}
-                                            size={32}
-                                            color={systemEmail ? themedStyles.accent : themedStyles.textSecondary}
-                                        />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <View style={[themedStyles.settingsItem, themedStyles.settingsItemLast]}>
-                                    <Text style={themedStyles.settingsItemText}>SMS</Text>
-                                    <TouchableOpacity onPress={() => setSystemSms(!systemSms)}>
-                                        <Icon
-                                            name={systemSms ? "toggle-switch" : "toggle-switch-off-outline"}
-                                            size={32}
-                                            color={systemSms ? themedStyles.accent : themedStyles.textSecondary}
-                                        />
-                                    </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {/* Marketing Notification */}
-                        <View style={{ marginBottom: 24, borderBottomWidth: 1, borderBottomColor: themedStyles.border, paddingBottom: 16 }}>
-                            <Text style={{ fontFamily: "Montserrat_600SemiBold", fontSize: 16, color: themedStyles.textPrimary, marginBottom: 6 }}>
-                                Marketing Notification
-                            </Text>
-                            <Text style={{ fontFamily: "Montserrat_400Regular", fontSize: 14, color: themedStyles.textSecondary, marginBottom: 12 }}>
-                                Receive notifications with personalized offers about new products.
-                            </Text>
-
-                            <View style={themedStyles.settingsItem}>
-                                <Text style={themedStyles.settingsItemText}>Email</Text>
-                                <TouchableOpacity onPress={() => setMarketingEmail(!marketingEmail)}>
-                                    <Icon
-                                        name={marketingEmail ? "toggle-switch" : "toggle-switch-off-outline"}
-                                        size={32}
-                                        color={marketingEmail ? themedStyles.accent : themedStyles.textSecondary}
-                                    />
-                                </TouchableOpacity>
-                            </View>
-
-                            <View style={[themedStyles.settingsItem, themedStyles.settingsItemLast]}>
-                                <Text style={themedStyles.settingsItemText}>SMS</Text>
-                                <TouchableOpacity onPress={() => setMarketingSms(!marketingSms)}>
-                                    <Icon
-                                        name={marketingSms ? "toggle-switch" : "toggle-switch-off-outline"}
-                                        size={32}
-                                        color={marketingSms ? themedStyles.accent : themedStyles.textSecondary}
-                                    />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </ScrollView>
-
-                    {/* Save Button */}
-                    <View style={themedStyles.saveButtonContainer}>
-                        <TouchableOpacity style={themedStyles.saveButton} onPress={() => setShowNotificationModal(false)}>
-                            <Text style={themedStyles.saveButtonText}>Save</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </SafeAreaView>
-        </Modal>
-
-        {/* Help & Support Modal */}
-        <Modal
-          animationType="slide"
-          transparent={false}
-          visible={showHelpSupportModal}
-          onRequestClose={() => setShowHelpSupportModal(false)}
-        >
-          <SafeAreaView style={themedStyles.modalSafeArea}>
-            <StatusBar barStyle={"dark-content"} backgroundColor={'#F8F8F8'} />
-            <View style={themedStyles.modalContainer}>
-              {/* Header */}
-              <View style={themedStyles.modalHeader}>
-                <TouchableOpacity
-                  onPress={() => setShowHelpSupportModal(false)}
-                  style={themedStyles.modalBackButton}
-                >
-                  <Icon name="chevron-left" size={24} color={themedStyles.textPrimary} />
-                </TouchableOpacity>
-                <Text style={themedStyles.modalHeaderTitle}>Help and Support</Text>
-                <View style={themedStyles.modalHeaderSpacer} />
-              </View>
-
-              <ScrollView style={themedStyles.modalScrollView} contentContainerStyle={{ padding: 20 }}>
-                {/* Contact Us Form */}
-                <Text style={[themedStyles.label, { fontSize: 16, marginBottom: 12 }]}>
-                  Contact Us
-                </Text>
-                <TextInput
-                  style={[themedStyles.input, { marginBottom: 12 }]}
-                  placeholder="Name"
-                  value={helpName}
-                  onChangeText={setHelpName}
-                />
-                <TextInput
-                  style={[themedStyles.input, { marginBottom: 12 }]}
-                  placeholder="Email"
-                  value={helpEmail}
-                  onChangeText={setHelpEmail}
-                  keyboardType="email-address"
-                />
-                <TextInput
-                  style={[themedStyles.input, { marginBottom: 12, height: 100, textAlignVertical: 'top' }]}
-                  placeholder="Message"
-                  value={helpMessage}
-                  onChangeText={setHelpMessage}
-                  multiline
-                />
-                <TouchableOpacity style={themedStyles.saveButton}>
-                  <Text style={themedStyles.saveButtonText}>Submit</Text>
-                </TouchableOpacity>
-
-                {/* FAQs */}
-                <View style={{ marginTop: 30 }}>
-                  <Text style={[themedStyles.label, { fontSize: 16, marginBottom: 12 }]}>
-                    FAQs
-                  </Text>
-
-                  {[
-                    { q: "How long does delivery take?", a: "Delivery usually takes 3–5 business days depending on your location." },
-                    { q: "Do you offer returns or exchanges?", a: "Yes, you can return or exchange items within 7 days of delivery." }
-                  ].map((faq, index) => (
-                    <View key={index} style={{ marginBottom: 10 }}>
-                      <TouchableOpacity
-                        style={themedStyles.settingsItem}
-                        onPress={() => setFaqExpanded(faqExpanded === index ? null : index)}
-                      >
-                        <Text style={themedStyles.settingsItemText}>{faq.q}</Text>
-                        <Icon
-                          name={faqExpanded === index ? "chevron-up" : "chevron-down"}
-                          size={20}
-                          color={themedStyles.textSecondary}
-                        />
-                      </TouchableOpacity>
-                      {faqExpanded === index && (
-                        <View style={{ padding: 12, backgroundColor: "#fff", borderRadius: 8 }}>
-                          <Text style={{ fontFamily: "Montserrat_400Regular", color: themedStyles.textSecondary }}>
-                            {faq.a}
-                          </Text>
-                        </View>
-                     )}
-                   </View>
-                 ))}
-               </View>
-             </ScrollView>
-           </View>
-         </SafeAreaView>
-       </Modal>
-     </View>
-   </SafeAreaView>
-  );
+            </View>
+        </SafeAreaView>
+    );
 };
 
 export default SettingsScreen;

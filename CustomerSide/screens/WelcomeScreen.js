@@ -1,4 +1,3 @@
-// screens/WelcomeScreen.js
 import React from 'react';
 import {
   View,
@@ -43,7 +42,7 @@ const WelcomeScreen = () => {
         <Text style={styles.title}>
           REFLECT YOUR <Text style={styles.styleHighlight}>STYLE</Text>
         </Text>
-        <Text style={styles.title}>WITH MIRRORA</Text>
+        <Text style={styles.subtitle}>WITH MIRRORA</Text>
       </View>
 
       {/* Description with Montserrat */}
@@ -109,15 +108,25 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     marginTop: -13,
   },
+  titleContainer: {
+    alignItems: 'center',
+    marginBottom: 25,
+  },
   title: {
     fontSize: 30,
     fontFamily: 'LeagueSpartan_700Bold',
     textAlign: 'center',
     color: '#A6A6A6',
-    marginBottom: -10,
   },
   styleHighlight: {
     color: '#A68B69',
+  },
+  subtitle: {
+    fontSize: 30,
+    fontFamily: 'LeagueSpartan_700Bold',
+    textAlign: 'center',
+    color: '#A6A6A6',
+    marginTop: -5, // Adjust this value to fine-tune vertical alignment
   },
   description: {
     fontSize: 14,

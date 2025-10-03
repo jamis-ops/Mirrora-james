@@ -38,6 +38,7 @@ import {
   deleteDoc,
   limit
 } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 
 // Dashboard Loader Component
 const DashboardLoader = () => {
@@ -92,7 +93,7 @@ const Header = ({ onBellClick, onFilterClick, unreadCount }) => {
 };
 
 // Enhanced NotificationsList Component
-const NotificationsList = ({ onClose, notifications, onMarkAsRead, onMarkAllAsRead, onDelete }) => {
+const NotificationsList = ({ onClose, notifications, onMarkAsRead, onMarkAllAsRead, onDelete, onNotificationClick }) => {
   const getNotificationIcon = (type) => {
     switch (type) {
       case 'payment': return <CreditCard className="w-5 h-5 text-white" />;
@@ -154,7 +155,7 @@ const NotificationsList = ({ onClose, notifications, onMarkAsRead, onMarkAllAsRe
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
-                <div className="flex items-start gap-3" onClick={() => !notification.read && onMarkAsRead(notification.id)}>
+                <div className="flex items-start gap-3" onClick={() => onNotificationClick(notification)}>
                   <div className={`w-10 h-10 bg-gradient-to-r ${getNotificationColor(notification.type)} rounded-xl flex items-center justify-center flex-shrink-0`}>
                     {getNotificationIcon(notification.type)}
                   </div>
@@ -455,7 +456,7 @@ const SalesLineChart = ({ data, timeFrame }) => {
             <path
               d={generateAreaPath(points)}
               fill="url(#areaGradient)"
-              opacity="0.3"
+              opacity="0.1"
             />
 
             {/* Main line */}
@@ -463,7 +464,7 @@ const SalesLineChart = ({ data, timeFrame }) => {
               d={generateSmoothPath(points)}
               fill="none"
               stroke="url(#lineGradient)"
-              strokeWidth="2.5"
+              strokeWidth="1.0"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -474,10 +475,10 @@ const SalesLineChart = ({ data, timeFrame }) => {
                 <circle 
                   cx={point.x} 
                   cy={point.y} 
-                  r="3" 
+                  r="2" 
                   fill="white" 
                   stroke="#A68B69"
-                  strokeWidth="2"
+                  strokeWidth="1"
                   className="cursor-pointer transition-all duration-200"
                   onMouseEnter={() => setHoveredPoint(point)}
                   onMouseLeave={() => setHoveredPoint(null)}
@@ -492,7 +493,7 @@ const SalesLineChart = ({ data, timeFrame }) => {
                       x2={point.x} 
                       y2={chartHeight + padding.top} 
                       stroke="#A68B69" 
-                      strokeWidth="1" 
+                      strokeWidth="0.5" 
                       strokeDasharray="2,2"
                       opacity="0.5"
                     />
@@ -792,7 +793,8 @@ const setupNotificationListeners = (setNotifications) => {
             title: "New Order Received",
             message: `Order #${orderData.displayId || change.doc.id} from ${orderData.customerName || "a customer"} has been placed.`,
             type: "order",
-            priority: "high"
+            priority: "high",
+            orderId: change.doc.id
           });
           await updateDoc(doc(db, "orders", change.doc.id), { adminNotified: true });
         }
@@ -834,7 +836,8 @@ const setupNotificationListeners = (setNotifications) => {
                 title: "New Message",
                 message: `New message from ${customerName}.`,
                 type: "message",
-                priority: "normal"
+                priority: "normal",
+                threadId: threadId
               });
               await updateDoc(doc(db, `artifacts/${appId}/public/data/chats/${threadId}/messages`, messageSnapshot.docs[0].id), { 
                 adminNotified: true 
@@ -864,7 +867,8 @@ const setupNotificationListeners = (setNotifications) => {
             title: "New Review",
             message: `New ${reviewData.rating}-star review received for ${reviewData.product || "a product"}.`,
             type: "review",
-            priority: "normal"
+            priority: "normal",
+            reviewId: change.doc.id
           });
           await updateDoc(doc(db, "reviews", change.doc.id), { adminNotified: true });
         }
@@ -888,7 +892,8 @@ const setupNotificationListeners = (setNotifications) => {
             title: "Low Stock Alert",
             message: `Product ${productData.name} is running low on stock (${productData.stock} units remaining).`,
             type: "lowstock",
-            priority: "high"
+            priority: "high",
+            productId: change.doc.id
           });
           await updateDoc(doc(db, "products", change.doc.id), { adminNotifiedLowStock: true });
         }
@@ -908,33 +913,70 @@ const setupNotificationListeners = (setNotifications) => {
 };
 
 // Fixed Data fetching functions
-const fetchOrders = async (filters = {}) => {
+const fetchNewOrdersCount = async (filters = {}) => {
   try {
-    let q = collection(db, "orders");
-    
-    // If no specific status filter, get all orders
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStart = Timestamp.fromDate(today);
+    const todayEnd = Timestamp.fromDate(tomorrow);
+
+    let q = query(
+      collection(db, "orders"),
+      where("createdAt", ">=", todayStart),
+      where("createdAt", "<", todayEnd)
+    );
+
     if (filters.status && filters.status !== "All Status") {
       q = query(q, where("status", "==", filters.status.toLowerCase()));
     }
-    
+
     const querySnapshot = await getDocs(q);
     return querySnapshot.size;
   } catch (error) {
-    console.error("Error fetching orders:", error);
-    return 0;
+    console.error("Error fetching new orders count:", error);
+    try {
+      let q = collection(db, "orders");
+      if (filters.status && filters.status !== "All Status") {
+        q = query(q, where("status", "==", filters.status.toLowerCase()));
+      }
+      const querySnapshot = await getDocs(q);
+      const today = new Date().setHours(0, 0, 0, 0);
+      let count = 0;
+      querySnapshot.forEach((doc) => {
+        const orderData = doc.data();
+        const orderDate = orderData.createdAt ? orderData.createdAt.toDate().getTime() : 0;
+        if (orderDate >= today) {
+          count++;
+        }
+      });
+      return count;
+    } catch (fallbackError) {
+      console.error("Fallback new orders count failed:", fallbackError);
+      return 0;
+    }
   }
 };
 
 const fetchTotalRevenue = async (filters = {}) => {
   try {
-    const q = query(collection(db, "orders"), where("payment", "==", "paid"));
+    let q = collection(db, "orders");
+    if (filters.status && filters.status !== "All Status") {
+      q = query(q, where("status", "==", filters.status.toLowerCase()));
+    }
     const querySnapshot = await getDocs(q);
     let totalRevenue = 0;
     querySnapshot.forEach((doc) => {
       const orderData = doc.data();
-      const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
-      if (!isNaN(total)) {
-        totalRevenue += total;
+      let paidAmount = 0;
+      if (orderData.payment === "paid") {
+        paidAmount = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+      } else if (orderData.payment === "partial") {
+        paidAmount = parseFloat(orderData.downPayment || (parseFloat(orderData.total || orderData.amount || orderData.price || 0) * 0.5) || 0);
+      }
+      if (!isNaN(paidAmount)) {
+        totalRevenue += paidAmount;
       }
     });
     return totalRevenue;
@@ -944,69 +986,59 @@ const fetchTotalRevenue = async (filters = {}) => {
   }
 };
 
-// FIXED: Today's Sales function - only counts delivered and paid orders from today
 const fetchTodaysSales = async () => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Create timestamp objects for Firestore query
     const todayStart = Timestamp.fromDate(today);
     const todayEnd = Timestamp.fromDate(tomorrow);
 
-    // Query for orders that are delivered AND fully paid AND created today
     const q = query(
-      collection(db, "orders"), 
-      where("status", "==", "delivered"),
-      where("payment", "==", "paid"),
+      collection(db, "orders"),
       where("createdAt", ">=", todayStart),
       where("createdAt", "<", todayEnd)
     );
-    
+
     const querySnapshot = await getDocs(q);
-    
     let todaysRevenue = 0;
     querySnapshot.forEach((doc) => {
       const orderData = doc.data();
-      const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
-      if (!isNaN(total)) {
-        todaysRevenue += total;
+      let paidAmount = 0;
+      if (orderData.payment === "paid") {
+        paidAmount = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+      } else if (orderData.payment === "partial") {
+        paidAmount = parseFloat(orderData.downPayment || (parseFloat(orderData.total || orderData.amount || orderData.price || 0) * 0.5) || 0);
+      }
+      if (!isNaN(paidAmount)) {
+        todaysRevenue += paidAmount;
       }
     });
-    
-    console.log("Today's delivered & paid revenue:", todaysRevenue, "from", querySnapshot.size, "orders");
+    console.log("Today's revenue:", todaysRevenue, "from", querySnapshot.size, "orders");
     return todaysRevenue;
   } catch (error) {
     console.error("Error fetching today's sales:", error);
-    
-    // Fallback: Try a simpler approach if the timestamp query fails
     try {
-      const q = query(
-        collection(db, "orders"), 
-        where("status", "==", "delivered"),
-        where("payment", "==", "paid")
-      );
+      const q = collection(db, "orders");
       const querySnapshot = await getDocs(q);
-      
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
+      const today = new Date().setHours(0, 0, 0, 0);
       let todaysRevenue = 0;
       querySnapshot.forEach((doc) => {
         const orderData = doc.data();
-        const orderDate = orderData.createdAt ? orderData.createdAt.toDate() : new Date();
-        
-        // Check if order was created today
+        const orderDate = orderData.createdAt ? orderData.createdAt.toDate().getTime() : 0;
         if (orderDate >= today) {
-          const total = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
-          if (!isNaN(total)) {
-            todaysRevenue += total;
+          let paidAmount = 0;
+          if (orderData.payment === "paid") {
+            paidAmount = parseFloat(orderData.total || orderData.amount || orderData.price || 0);
+          } else if (orderData.payment === "partial") {
+            paidAmount = parseFloat(orderData.downPayment || (parseFloat(orderData.total || orderData.amount || orderData.price || 0) * 0.5) || 0);
+          }
+          if (!isNaN(paidAmount)) {
+            todaysRevenue += paidAmount;
           }
         }
       });
-      
       return todaysRevenue;
     } catch (fallbackError) {
       console.error("Fallback today's sales also failed:", fallbackError);
@@ -1119,6 +1151,7 @@ export default function Index() {
   });
 
   const unreadCount = notifications.filter(notif => !notif.read).length;
+  const navigate = useNavigate();
 
   useEffect(() => {
     const unsubscribe = setupNotificationListeners(setNotifications);
@@ -1129,19 +1162,19 @@ export default function Index() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [orders, revenue, products, reviews, todaysSales] = await Promise.all([
-          fetchOrders(filters), 
+        const [newOrdersCount, revenue, products, reviews, todaysSales] = await Promise.all([
+          fetchNewOrdersCount(filters), 
           fetchTotalRevenue(filters), 
           fetchProducts(filters), 
           fetchReviews(),
           fetchTodaysSales()
         ]);
         
-        console.log("Fetched data:", { orders, revenue, products, todaysSales });
+        console.log("Fetched data:", { newOrdersCount, revenue, products, todaysSales });
         
         setDashboardData({
           totalProducts: products.toString(),
-          ordersToday: orders.toString(),
+          ordersToday: newOrdersCount.toString(),
           revenue: `₱${revenue.toLocaleString()}`,
           todaysSales: `₱${todaysSales.toLocaleString()}`,
           totalReviews: reviews.total.toString(),
@@ -1196,6 +1229,35 @@ export default function Index() {
   const handleMarkAsRead = async (notificationId) => await notificationService.markAsRead(notificationId);
   const handleDelete = async (notificationId) => await notificationService.deleteNotification(notificationId);
   const handleMarkAllAsRead = async () => await notificationService.markAllAsRead();
+
+  const handleNotificationClick = (notification) => {
+    if (!notification.read) {
+      handleMarkAsRead(notification.id);
+    }
+
+    switch (notification.type) {
+      case 'message':
+        if (notification.threadId) {
+          navigate(`/admin/messages/${notification.threadId}`);
+          setIsPanelOpen(false);
+        }
+        break;
+      case 'order':
+        navigate(`/admin/orders`);
+        setIsPanelOpen(false);
+        break;
+      case 'review':
+        navigate(`/admin/reviews`);
+        setIsPanelOpen(false);
+        break;
+      case 'lowstock':
+        navigate(`/admin/products`);
+        setIsPanelOpen(false);
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
@@ -1318,6 +1380,7 @@ export default function Index() {
           onMarkAsRead={handleMarkAsRead} 
           onMarkAllAsRead={handleMarkAllAsRead}
           onDelete={handleDelete}
+          onNotificationClick={handleNotificationClick}
         />
       </div>
 
