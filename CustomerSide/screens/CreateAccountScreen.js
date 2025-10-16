@@ -73,18 +73,55 @@ export default function CreateAccountScreen({ navigation }) {
     }
 
     // Terms and Conditions content
-    const termsContent = [
-        { title: "1. Introduction and Acceptance", text: "Welcome to Mirrora Philippines! These Terms and Conditions govern your use of our e-commerce website and your purchase of products from us. By using our site or placing an order, you agree to be bound by these terms. If you do not accept these terms, please do not use our website." },
-        { title: "2. Products and Services", text: "Product Descriptions: We strive for accuracy in all product descriptions, including materials, dimensions, and finishes. However, please note that slight variations in color and texture may occur due to natural materials and monitor settings. Mirrora Philippines reserves the right to modify product specifications and prices at any time without prior notice.\n\nFor custom-made products, the design and specifications will be finalized and approved by the client before production begins. A detailed invoice and a design mock-up will be provided for your review. Any changes requested after final approval may result in additional charges and delays." },
-        { title: "3. Pricing and Payment", text: " All prices listed are in Philippine Pesos (PHP) and are inclusive of Value-Added Tax (VAT), unless otherwise stated. Prices do not include delivery and installation fees, which will be calculated and added at checkout.\n\nWe require a 50% down payment for all custom orders before production begins. The remaining 50% must be paid upon delivery or before installation. For pre-designed, ready-to-ship items, full payment is required at the time of purchase.\n\n For a smoother transaction, we require a 50% down payment via bank transfer. The remaining 50% will be collected in cash upon delivery of your order.. Details for these methods will be provided during the checkout process." },
-        { title: "4. Order Processing and Fulfillment", text: "Order Confirmation: An order is considered confirmed only after we have received the required payment and sent you a confirmation email. This email will include your order number, a summary of your items, and an estimated lead time.\n\n Our typical lead time for custom glass and mirror products is 10 to 15 business days from the date of down payment. This may vary based on the complexity and volume of the order. We will inform you of any potential delays." },
-        { title: "5. Delivery and Installation", text: " We provide delivery and installation services within Cebu and selected provincial areas. Delivery fees are calculated based on your location and the size of the items.\n\n It is your responsibility to ensure that the delivery address and contact information are accurate. You or a designated representative must be present to receive the items.\n\n For installations, please ensure the site is prepared and accessible. Any unforeseen site conditions that require additional work, such as dismantling existing structures or extra materials, may incur additional charges.\n\n You must inspect all items upon delivery. If you find any damage, scratches, or manufacturing defects, you must report them immediately to our delivery personnel and note them on the delivery receipt. We will not be responsible for damages reported after our personnel have left the delivery site." },
-        { title: "6. Returns and Refunds", text: " If a product is verified as damaged upon delivery, we will replace it at no additional cost or issue a full refund, at our discretion.\n\n All sales of custom-made products are final. We cannot accept returns or provide refunds for these items unless they are defective or damaged during delivery, as per the inspection clause above.\n\n If you wish to cancel a custom order after the down payment has been made but before production has started, a 25% cancellation fee of the total project cost will be charged to cover design and administrative work. Once production has started, no cancellations will be accepted and the down payment will be forfeited." },
-        { title: "7. Warranties and Guarantees", text: " We provide a one-year warranty on our installation workmanship against defects. This warranty does not cover damages caused by misuse, improper cleaning, accidental breakage, or natural wear and tear.\n\n We guarantee that our products are made from high-quality materials as specified. The warranty on the glass and mirror itself covers manufacturing defects and is valid for one year from the date of purchase." },
-        { title: "8. Intellectual Property", text: "All designs, logos, images, and content on our website are the exclusive property of Mirrora Philippines. Any unauthorized use, reproduction, or distribution is strictly prohibited and subject to legal action." },
-        { title: "9. Governing Law", text: "These Terms and Conditions are governed by the laws of the Republic of the Philippines. Any disputes will be resolved through amicable negotiation. If a resolution cannot be reached, the dispute will be submitted to the exclusive jurisdiction of the courts of Cebu City." },
-        { title: "10. Contact Us", text: "For any inquiries regarding these terms, please contact our customer service team through the contact details provided on our application." }
-    ];
+ const termsContent = [
+    { 
+        title: "1. Introduction and Acceptance", 
+        text: "Welcome to Mirrora Philippines! These Terms and Conditions govern your use of our e-commerce website and your purchase of products from us. By using our site or placing an order, you agree to be bound by these terms. If you do not accept these terms, please do not use our website." 
+    },
+    { 
+        title: "2. Products and Services", 
+        text: "Product Descriptions: We strive for accuracy in all product descriptions, including materials, dimensions, and finishes. However, please note that slight variations in color and texture may occur due to natural materials and monitor settings. Mirrora Philippines reserves the right to modify product specifications and prices at any time without prior notice.\n\nFor custom-made products, the design and specifications will be finalized and approved by the client before production begins. A detailed invoice and a design mock-up will be provided for your review. Any changes requested after final approval may result in additional charges and delays." 
+    },
+    { 
+        title: "3. Pricing and Payment", 
+        text: "All prices listed are in Philippine Pesos (PHP) and are inclusive of Value-Added Tax (VAT), unless otherwise stated. Prices do not include delivery and installation fees, which will be calculated and added at checkout.\n\nWe require a 50% down payment for all custom orders before production begins. The remaining 50% must be paid upon delivery or before installation. For pre-designed, ready-to-ship items, full payment is required at the time of purchase.\n\nFor a smoother transaction, we require a 50% down payment via bank transfer. The remaining 50% will be collected in cash upon delivery of your order. Details for these methods will be provided during the checkout process." 
+    },
+    { 
+        title: "4. Order Processing and Fulfillment", 
+        text: "Order Confirmation: An order is considered confirmed only after we have received the required payment and sent you a confirmation email. This email will include your order number, a summary of your items, and an estimated lead time.\n\nOur typical lead time for custom glass and mirror products is 10 to 15 business days from the date of down payment. This may vary based on the complexity and volume of the order. We will inform you of any potential delays." 
+    },
+    { 
+        title: "5. Delivery and Installation", 
+        text: "We provide delivery and installation services within Cebu and selected provincial areas. Delivery fees are calculated based on your location and the size of the items.\n\nIt is your responsibility to ensure that the delivery address and contact information are accurate. You or a designated representative must be present to receive the items.\n\nFor installations, please ensure the site is prepared and accessible. Any unforeseen site conditions that require additional work, such as dismantling existing structures or extra materials, may incur additional charges.\n\nYou must inspect all items upon delivery. If you find any damage, scratches, or manufacturing defects, you must report them immediately to our delivery personnel and note them on the delivery receipt. We will not be responsible for damages reported after our personnel have left the delivery site." 
+    },
+    { 
+        title: "6. Returns and Refunds", 
+        text: "If a product is verified as damaged upon delivery, we will replace it at no additional cost or issue a full refund, at our discretion.\n\nAll sales of custom-made products are final. We cannot accept returns or provide refunds for these items unless they are defective or damaged during delivery, as per the inspection clause above." 
+    },
+    { 
+        title: "7. Order Cancellation Policy", 
+        text: "Once an order has been placed and a 50% down payment has been made, it is considered confirmed.\n\nIf a customer wishes to cancel their order, only 75% of their 50% down payment will be refunded.\n\nCancellations are only allowed within 24 hours after placing the order or if the order has not yet been processed. After this period or once production begins, cancellations and refunds will no longer be accepted.\n\nMirrora Philippines reserves the right to cancel orders due to unforeseen circumstances such as unavailability of materials or other valid reasons. In such cases, customers will receive a full refund of their down payment." 
+    },
+    { 
+        title: "8. Warranties and Guarantees", 
+        text: "We provide a one-year warranty on our installation workmanship against defects. This warranty does not cover damages caused by misuse, improper cleaning, accidental breakage, or natural wear and tear.\n\nWe guarantee that our products are made from high-quality materials as specified. The warranty on the glass and mirror itself covers manufacturing defects and is valid for one year from the date of purchase." 
+    },
+    { 
+        title: "9. Intellectual Property", 
+        text: "All designs, logos, images, and content on our website are the exclusive property of Mirrora Philippines. Any unauthorized use, reproduction, or distribution is strictly prohibited and subject to legal action." 
+    },
+    { 
+        title: "10. Governing Law", 
+        text: "These Terms and Conditions are governed by the laws of the Republic of the Philippines. Any disputes will be resolved through amicable negotiation. If a resolution cannot be reached, the dispute will be submitted to the exclusive jurisdiction of the courts of Cebu City." 
+    },
+    { 
+        title: "11. Contact Us", 
+        text: "For any inquiries regarding these terms, please contact our customer service team through the contact details provided on our application." 
+    }
+];
+
+
+
 
     // Custom modal component for all messages (success, warning, error)
     const MessageModal = () => (

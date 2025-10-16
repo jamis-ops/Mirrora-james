@@ -17,7 +17,8 @@ import {
   FileText,
   Ruler,
   Palette,
-  Wrench
+  Wrench,
+  Loader2
 } from 'lucide-react';
 import { db, appId } from '../../Backend/firebaseConfig.js';
 import { 
@@ -35,7 +36,7 @@ import {
   runTransaction
 } from 'firebase/firestore';
 import { useParams } from 'react-router-dom';
-import debounce from 'lodash/debounce';
+import debounce from "lodash.debounce";
 
 const CustomizationMessage = React.memo(({ msg, onView, onProposal }) => {
   if (!msg.customizationData) return null;
@@ -388,11 +389,37 @@ function Messages() {
     paymentTerms: ''
   });
   const [isSending, setIsSending] = useState(false);
+  const [isSendingProposal, setIsSendingProposal] = useState(false);
+  
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const lastMessageCountRef = useRef(0);
+  
+  // Refs for cleanup
+  const threadsUnsubscribeRef = useRef(null);
+  const messagesUnsubscribeRef = useRef(null);
+  
   const { threadId } = useParams();
+
+  // Cleanup function for listeners
+  const cleanupListeners = useCallback(() => {
+    if (threadsUnsubscribeRef.current) {
+      threadsUnsubscribeRef.current();
+      threadsUnsubscribeRef.current = null;
+    }
+    if (messagesUnsubscribeRef.current) {
+      messagesUnsubscribeRef.current();
+      messagesUnsubscribeRef.current = null;
+    }
+  }, []);
+
+  // Main cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupListeners();
+    };
+  }, [cleanupListeners]);
 
   // Check for pre-filled message on component mount
   useEffect(() => {
@@ -401,7 +428,6 @@ function Messages() {
     const customerEmail = sessionStorage.getItem('chatCustomerEmail');
     
     if (prefilledMessage && customerName) {
-      // Find thread for this customer
       const existingThread = chatThreads.find(thread => 
         thread.userName === customerName || 
         thread.customerEmail === customerEmail
@@ -409,10 +435,8 @@ function Messages() {
       
       if (existingThread) {
         setSelectedThread(existingThread);
-        // Auto-fill the message input
         setReplyContent(prefilledMessage);
         
-        // Clear the session storage
         sessionStorage.removeItem('prefilledMessage');
         sessionStorage.removeItem('chatCustomerName');
         sessionStorage.removeItem('chatCustomerEmail');
@@ -420,21 +444,20 @@ function Messages() {
     }
   }, [chatThreads]);
 
-  // Select thread based on URL param
+  // Handle URL threadId parameter - FIXED
   useEffect(() => {
     if (threadId && chatThreads.length > 0) {
       const thread = chatThreads.find(t => t.id === threadId);
-      if (thread) {
+      if (thread && (!selectedThread || selectedThread.id !== threadId)) {
         handleThreadSelect(thread);
       }
     }
-  }, [threadId, chatThreads]);
+  }, [threadId, chatThreads, selectedThread]);
 
   const scrollToBottom = useCallback((behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   }, []);
 
-  // Handle scroll to detect if user is at bottom
   const handleScroll = useCallback(() => {
     if (messagesContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
@@ -459,9 +482,15 @@ function Messages() {
     }
   }, [handleScroll]);
 
-  // Fetch and deduplicate chat threads
+  // Fetch and deduplicate chat threads - FIXED with proper cleanup
   useEffect(() => {
     let isMounted = true;
+    
+    // Cleanup previous listener
+    if (threadsUnsubscribeRef.current) {
+      threadsUnsubscribeRef.current();
+    }
+
     const chatsRef = collection(db, `artifacts/${appId}/public/data/chats`);
     const q = query(chatsRef, orderBy('timestamp', 'desc'));
 
@@ -474,7 +503,6 @@ function Messages() {
         const customerId = data.customerId || doc.id;
         const existingThread = threadsMap.get(customerId);
 
-        // Only keep the most recent thread for each customerId
         if (!existingThread || (data.timestamp?.toMillis() > existingThread.timestamp?.toMillis())) {
           threadsMap.set(customerId, {
             id: doc.id,
@@ -494,15 +522,22 @@ function Messages() {
       if (isMounted) setLoadingThreads(false);
     });
 
+    threadsUnsubscribeRef.current = unsubscribe;
+
     return () => {
       isMounted = false;
-      unsubscribe();
     };
   }, []);
 
   const handleThreadSelect = useCallback(async (thread) => {
+    // Don't do anything if we're already on this thread
+    if (selectedThread?.id === thread.id) return;
+    
     setSelectedThread(thread);
+    setMessages([]);
+    setReplyContent('');
     setIsAtBottom(true);
+    
     if (!thread.isRead) {
       const threadRef = doc(db, `artifacts/${appId}/public/data/chats`, thread.id);
       try {
@@ -511,63 +546,74 @@ function Messages() {
         console.error("Error marking thread as read: ", error);
       }
     }
-  }, []);
+  }, [selectedThread]);
 
-  // Fetch messages for selected thread
+  // Fetch messages for selected thread - FIXED with proper cleanup
   useEffect(() => {
-    if (selectedThread) {
-      let isMounted = true;
-      setLoadingMessages(true);
-      const messagesRef = collection(db, `artifacts/${appId}/public/data/chats/${selectedThread.id}/messages`);
-      const q = query(messagesRef, orderBy('timestamp', 'asc'));
-
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        if (!isMounted) return;
-        const fetchedMessages = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            senderName: data.senderName || data.userName || data.customerName || data.name || 
-                      (data.senderId === 'mirrora-admin' ? 'Mirrora Support' : 'Customer')
-          };
-        });
-        setMessages(fetchedMessages);
-        setLoadingMessages(false);
-
-        // Update thread with proper user name and customization flag
-        if (fetchedMessages.length > 0) {
-          const customerMessage = fetchedMessages.find(msg => 
-            msg.senderId !== 'mirrora-admin' && msg.isUser !== false
-          );
-          const hasCustomization = fetchedMessages.some(msg => msg.messageType === 'customization_request');
-          if ((customerMessage && customerMessage.senderName && customerMessage.senderName !== 'Customer') || hasCustomization !== selectedThread.hasCustomization) {
-            const threadRef = doc(db, `artifacts/${appId}/public/data/chats`, selectedThread.id);
-            setDoc(threadRef, { 
-              userName: customerMessage?.senderName || selectedThread.userName,
-              customerName: customerMessage?.senderName || selectedThread.userName,
-              hasCustomizationRequest: hasCustomization
-            }, { merge: true }).catch(error => {
-              console.error("Error updating thread metadata: ", error);
-            });
-            
-            setSelectedThread(prev => ({
-              ...prev,
-              userName: customerMessage?.senderName || prev.userName,
-              hasCustomization: hasCustomization
-            }));
-          }
-        }
-      }, (error) => {
-        console.error("Error fetching messages: ", error);
-        if (isMounted) setLoadingMessages(false);
-      });
-      
-      return () => {
-        isMounted = false;
-        unsubscribe();
-      };
+    if (!selectedThread) {
+      setMessages([]);
+      return;
     }
+
+    let isMounted = true;
+    
+    // Cleanup previous message listener
+    if (messagesUnsubscribeRef.current) {
+      messagesUnsubscribeRef.current();
+    }
+
+    setLoadingMessages(true);
+    const messagesRef = collection(db, `artifacts/${appId}/public/data/chats/${selectedThread.id}/messages`);
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      if (!isMounted) return;
+      const fetchedMessages = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          senderName: data.senderName || data.userName || data.customerName || data.name || 
+                    (data.senderId === 'mirrora-admin' ? 'Mirrora Support' : 'Customer')
+        };
+      });
+      setMessages(fetchedMessages);
+      setLoadingMessages(false);
+
+      // Update thread metadata if needed
+      if (fetchedMessages.length > 0) {
+        const customerMessage = fetchedMessages.find(msg => 
+          msg.senderId !== 'mirrora-admin' && msg.isUser !== false
+        );
+        const hasCustomization = fetchedMessages.some(msg => msg.messageType === 'customization_request');
+        
+        if ((customerMessage && customerMessage.senderName && customerMessage.senderName !== 'Customer') || hasCustomization !== selectedThread.hasCustomization) {
+          const threadRef = doc(db, `artifacts/${appId}/public/data/chats`, selectedThread.id);
+          setDoc(threadRef, { 
+            userName: customerMessage?.senderName || selectedThread.userName,
+            customerName: customerMessage?.senderName || selectedThread.userName,
+            hasCustomizationRequest: hasCustomization
+          }, { merge: true }).catch(error => {
+            console.error("Error updating thread metadata: ", error);
+          });
+          
+          setSelectedThread(prev => ({
+            ...prev,
+            userName: customerMessage?.senderName || prev.userName,
+            hasCustomization: hasCustomization
+          }));
+        }
+      }
+    }, (error) => {
+      console.error("Error fetching messages: ", error);
+      if (isMounted) setLoadingMessages(false);
+    });
+    
+    messagesUnsubscribeRef.current = unsubscribe;
+    
+    return () => {
+      isMounted = false;
+    };
   }, [selectedThread]);
 
   const handleSendReply = useCallback(debounce(async () => {
@@ -617,12 +663,10 @@ function Messages() {
     const messagesRef = collection(chatThreadRef, 'messages');
 
     try {
-      // Delete all messages first
       const messagesSnapshot = await getDocs(messagesRef);
       const deletePromises = messagesSnapshot.docs.map((messageDoc) => deleteDoc(messageDoc.ref));
       await Promise.all(deletePromises);
       
-      // Then delete the thread
       await deleteDoc(chatThreadRef);
 
       setSelectedThread(null);
@@ -648,6 +692,10 @@ function Messages() {
       alert('Please provide both price and timeline for the proposal.');
       return;
     }
+
+    if (isSendingProposal) return;
+
+    setIsSendingProposal(true);
 
     const chatThreadRef = doc(db, `artifacts/${appId}/public/data/chats/${selectedThread.id}`);
     const messagesRef = collection(chatThreadRef, 'messages');
@@ -734,8 +782,10 @@ Ready to proceed? Click the button below to confirm your custom order!`;
     } catch (error) {
       console.error('Error sending proposal:', error);
       alert('Failed to send proposal. Please try again.');
+    } finally {
+      setIsSendingProposal(false);
     }
-  }, [proposalData, selectedCustomization, selectedThread]);
+  }, [proposalData, selectedCustomization, selectedThread, isSendingProposal]);
 
   const filteredThreads = chatThreads
     .filter(thread => filter === 'unread' ? !thread.isRead : filter === 'customization' ? thread.hasCustomization : true)
@@ -1020,7 +1070,7 @@ Ready to proceed? Click the button below to confirm your custom order!`;
       </div>
 
       {showCustomizationModal && selectedCustomization && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="bg-blue-500 text-white p-4 flex items-center justify-between">
               <div>
@@ -1186,7 +1236,7 @@ Ready to proceed? Click the button below to confirm your custom order!`;
       )}
 
       {showProposalModal && selectedCustomization && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="bg-blue-500 text-white p-4 flex items-center justify-between">
               <div>
@@ -1325,11 +1375,20 @@ Ready to proceed? Click the button below to confirm your custom order!`;
                 </button>
                 <button
                   onClick={sendCustomizationProposal}
-                  disabled={!proposalData.price || !proposalData.timeline}
+                  disabled={!proposalData.price || !proposalData.timeline || isSendingProposal}
                   className="flex-1 bg-green-500 text-white py-2 rounded-lg hover:bg-green-600 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium"
                 >
-                  <ShoppingCart size={18} />
-                  Send Proposal
+                  {isSendingProposal ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <ShoppingCart size={18} />
+                      Send Proposal
+                    </>
+                  )}
                 </button>
               </div>
             </div>

@@ -113,31 +113,46 @@ const MyOrderScreen = () => {
         setActiveTab(tab);
     };
 
-    const handleCancelOrder = async (orderId) => {
+    const handleCancelOrder = async (orderId, orderTotal) => {
         try {
+            const downpayment = orderTotal * 0.5;
+            const refundAmount = downpayment * 0.75;
+            const cancellationFee = downpayment - refundAmount;
+            
             Alert.alert(
                 "Cancel Order",
-                "Are you sure you want to cancel this order?",
+                `Are you sure you want to cancel this order?\n\n• Your 50% downpayment: ₱${downpayment.toLocaleString()}\n• Refundable amount (75%): ₱${refundAmount.toLocaleString()}\n• Cancellation fee: ₱${cancellationFee.toLocaleString()}\n\nOnly 75% of your downpayment will be refunded.`,
                 [
                     {
-                        text: "No",
+                        text: "No, Keep Order",
                         style: "cancel"
                     },
                     {
-                        text: "Yes",
+                        text: "Yes, Cancel Order",
                         onPress: async () => {
-                            const orderRef = doc(db, 'orders', orderId);
-                            await updateDoc(orderRef, {
-                                status: 'cancelled'
-                            });
-                            console.log(`Order ${orderId} cancelled successfully`);
+                            try {
+                                const orderRef = doc(db, 'orders', orderId);
+                                await updateDoc(orderRef, {
+                                    status: 'cancelled'
+                                });
+                                console.log(`Order ${orderId} cancelled successfully`);
+                                
+                                Alert.alert(
+                                    "Order Cancelled",
+                                    `Your order has been cancelled successfully. ₱${refundAmount.toLocaleString()} will be refunded to your account within 3-5 business days.`,
+                                    [{ text: "OK" }]
+                                );
+                            } catch (error) {
+                                console.error("Error cancelling order:", error);
+                                Alert.alert("Error", "Failed to cancel order. Please try again.");
+                            }
                         }
                     }
                 ]
             );
         } catch (error) {
-            console.error("Error cancelling order:", error);
-            Alert.alert("Error", "Failed to cancel order. Please try again.");
+            console.error("Error in cancel order process:", error);
+            Alert.alert("Error", "Failed to process cancellation. Please try again.");
         }
     };
     
@@ -154,16 +169,21 @@ const MyOrderScreen = () => {
                     {
                         text: "Delete",
                         onPress: async () => {
-                            const orderRef = doc(db, 'orders', orderId);
-                            await deleteDoc(orderRef);
-                            console.log(`Order ${orderId} deleted successfully`);
+                            try {
+                                const orderRef = doc(db, 'orders', orderId);
+                                await deleteDoc(orderRef);
+                                console.log(`Order ${orderId} deleted successfully`);
+                            } catch (error) {
+                                console.error("Error deleting order:", error);
+                                Alert.alert("Error", "Failed to delete order. Please try again.");
+                            }
                         }
                     }
                 ]
             );
         } catch (error) {
-            console.error("Error deleting order:", error);
-            Alert.alert("Error", "Failed to delete order. Please try again.");
+            console.error("Error in delete order process:", error);
+            Alert.alert("Error", "Failed to process deletion. Please try again.");
         }
     };
     
@@ -297,7 +317,7 @@ const MyOrderScreen = () => {
                                 
                                 {order.status === 'pending' && (
                                     <TouchableOpacity 
-                                        onPress={() => handleCancelOrder(order.id)} 
+                                        onPress={() => handleCancelOrder(order.id, order.total)} 
                                         style={styles.cancelButton}
                                     >
                                         <Text style={styles.cancelButtonText}>Cancel Order</Text>
